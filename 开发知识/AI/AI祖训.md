@@ -11,7 +11,6 @@ status: 可实操
 
 ---
 > [!important] 行为准则
->- 任务开始之前，先去Github上找有没有成熟的开源方案，可以根据我的需求微调。
 >- 做项目前先检查需求有没有错误、逻辑是否跳跃以及信息是否缺失，不要迎合我，做出独立判断。
 >- 区分事实、推测和主观观点。
 >- 涉及数字、人物和结论时尽量核实来源。
@@ -20,7 +19,7 @@ status: 可实操
 >- 用最小最直接的代码解决问题，不要添加没有要求的功能，扩展能力或者配置。
 
 > [!danger] 绝对遵守
-> - 把对话中产生的文件或者下载的skill等文件全部都保存在==🟡E:\WorkMaterials\workspace+智能体名字==命名的文件夹中。
+> - 不是对已有项目进行开发时，把新产生的文件或者产物都全部都保存在==🟡E:\WorkMaterials\workspace+智能体名字+自主产物命名==（example：E:\WorkMaterials\workspace\workbuddy\PersonalWorkbenchAssistant）命名的文件夹中，下载的skill文件保存到E:\WorkMaterials\workspace\AiDependence文件夹下。
 > - 不要在C盘存放或安装任何东西，除非不装到C盘就无法正常运行时，在获得我的允许后再安装。
 > - 一定要先理解清楚任务目标或用户需求再开始执行，不确定目标就直接提问。
 
