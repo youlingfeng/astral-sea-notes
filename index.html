@@ -1,0 +1,2208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>星海笔记 · 知识星云</title>
+<style>
+  :root {
+    --ink: #070605;
+    --paper: #c9b48c;
+    --star: #f4ead8;
+    --text-dim: #8b8069;
+    --hud-line: rgba(201, 180, 140, .16);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--ink);
+    color: var(--paper);
+    overflow: hidden;
+    font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #stage { position: fixed; inset: 0; z-index: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+
+  body.no-webgl::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background:
+      radial-gradient(ellipse at 50% 45%, rgba(58, 44, 28, .35), transparent 60%),
+      radial-gradient(circle at 70% 70%, rgba(201, 180, 140, .05), transparent 50%),
+      var(--ink);
+  }
+
+  .vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 50%, transparent 48%, rgba(0, 0, 0, .5) 100%);
+  }
+
+  /* ---------- 3D 竹简卷轴 · 天书识海（独立渲染层） ---------- */
+  #scroll3d {
+    position: fixed;
+    top: 74px;
+    left: 8px;
+    width: 560px;
+    height: 300px;
+    z-index: 4;
+    pointer-events: none;
+    filter: drop-shadow(0 10px 26px rgba(0, 0, 0, .6));
+  }
+
+  #scrollCanvas { display: block; width: 100%; height: 100%; pointer-events: none; }
+
+  #scrollHit {
+    position: absolute;
+    left: 24px;
+    top: 26px;
+    width: 118px;
+    height: 248px;
+    pointer-events: auto;
+    cursor: pointer;
+    transition: width .5s ease;
+  }
+
+  #scroll3d.open #scrollHit { width: var(--hit-open-w, 430px); }
+
+  /* ---------- 竹简卷轴 · 天书识海（WebGL 不可用时的降级导航） ---------- */
+  #scroll {
+    display: none;
+    position: fixed;
+    top: 86px;
+    left: 18px;
+    z-index: 4;
+    align-items: stretch;
+    filter: drop-shadow(0 8px 22px rgba(0, 0, 0, .55));
+  }
+
+  .slip {
+    writing-mode: vertical-rl;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: 42px;
+    height: 188px;
+    padding: 16px 0;
+    margin-right: 3px;
+    background: linear-gradient(180deg, #8a6a38, #6f5426 55%, #5a431c);
+    border: 1px solid rgba(28, 19, 8, .85);
+    border-radius: 5px;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, .38);
+    color: #f4e6c2;
+    font-family: "STKaiti", "KaiTi", "Songti SC", "Noto Serif SC", serif;
+    font-size: 16px;
+    letter-spacing: .38em;
+    cursor: pointer;
+    position: relative;
+    transition: transform .25s, box-shadow .25s, filter .25s;
+    user-select: none;
+  }
+
+  /* 竹简编绳孔 */
+  .slip::before, .slip::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    transform: translateX(-50%);
+    background: rgba(24, 16, 6, .9);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, .8), 0 1px 0 rgba(255, 230, 170, .18);
+  }
+  .slip::before { top: 6px; }
+  .slip::after { bottom: 6px; }
+
+  .slip:hover { filter: brightness(1.15); transform: translateY(-2px); }
+
+  .slip.title-slip {
+    width: 50px;
+    height: 208px;
+    background: linear-gradient(180deg, #a5824a, #7c5e2c 55%, #63481d);
+    font-size: 19px;
+    letter-spacing: .42em;
+    color: #ffeec6;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, .55), 0 0 12px rgba(216, 185, 120, .35);
+    border-color: rgba(20, 13, 5, .9);
+  }
+
+  .slip.on {
+    background: linear-gradient(180deg, #c9a45c, #96722f 55%, #7a5a22);
+    color: #fff3d2;
+    text-shadow: 0 0 10px rgba(255, 230, 160, .55);
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, .3), 0 0 14px rgba(216, 185, 120, .4);
+    transform: translateY(-3px);
+  }
+
+  #scrollBody {
+    display: flex;
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-width .5s cubic-bezier(.2, .8, .2, 1), opacity .35s;
+  }
+
+  #scroll.expanded #scrollBody { max-width: 480px; opacity: 1; }
+
+  /* 降级竹简的卷数 / 册数标记 */
+  .scroll-count {
+    writing-mode: vertical-rl;
+    align-self: flex-start;
+    margin-left: 6px;
+    padding: 8px 5px;
+    font-size: 12px;
+    letter-spacing: .14em;
+    color: #f3dda9;
+    background: rgba(48, 29, 11, .8);
+    border: 1px solid rgba(200, 158, 88, .55);
+    border-radius: 3px;
+    text-shadow: 0 0 8px rgba(216, 185, 120, .45);
+    user-select: none;
+  }
+
+  .help {
+    position: fixed;
+    left: 18px;
+    bottom: 16px;
+    z-index: 3;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: .05em;
+    line-height: 1.9;
+    pointer-events: none;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, .8);
+  }
+
+  .tip {
+    position: fixed;
+    z-index: 5;
+    max-width: 320px;
+    padding: 7px 10px;
+    border: 1px solid var(--hud-line);
+    border-radius: 8px;
+    background: rgba(9, 8, 6, .92);
+    backdrop-filter: blur(6px);
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+    line-height: 1.5;
+  }
+
+  .tip .n { font-size: 12px; color: var(--star); letter-spacing: .03em; }
+  .tip .p {
+    margin-top: 2px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    word-break: break-all;
+  }
+
+  .alert {
+    position: fixed;
+    top: 78px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 6;
+    max-width: min(640px, calc(100vw - 32px));
+    padding: 12px 40px 12px 16px;
+    border: 1px solid rgba(180, 96, 76, .45);
+    border-radius: 10px;
+    background: rgba(38, 16, 12, .92);
+    color: #e8b9a8;
+    font-size: 12.5px;
+    line-height: 1.7;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  }
+
+  .alert code {
+    color: #f0d2b8;
+    background: rgba(0, 0, 0, .35);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11.5px;
+  }
+
+  .alert .close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    border: 0;
+    background: none;
+    color: #b58a7c;
+    font-size: 15px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+  }
+
+  @media (max-width: 560px) {
+    .help { display: none; }
+    #scroll3d { transform: scale(.68); transform-origin: top left; }
+  }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <div id="scroll3d" aria-label="天书识海 · 星域导航">
+    <canvas id="scrollCanvas"></canvas>
+    <div id="scrollHit"></div>
+  </div>
+
+  <nav id="scroll" aria-label="天书识海 · 星域导航">
+    <button id="scrollToggle" class="slip title-slip" type="button">天书识海</button>
+    <div id="scrollCount" class="scroll-count"></div>
+    <div id="scrollBody"></div>
+  </nav>
+
+  <div class="help">
+    点卷轴：毛笔点简 · 缓缓展卷｜点竹简：切换星域｜再点卷轴：收卷并还原星云全景<br>
+    拖拽旋转 · 滚轮缩放 · 右键平移 · 拖拽星点：牵引星云变形<br>
+    点击星云 / 星点：仅看该星云 · 点击星点：点亮关联 · 星云内点空白：回到星云全貌 · 点击虚空：回到全景
+  </div>
+
+  <div id="tip" class="tip" hidden></div>
+  <div id="alert" class="alert" hidden></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/",
+      "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  import * as d3 from 'd3';
+
+  /* ============================================================
+     工具
+     ============================================================ */
+
+  const $ = (id) => document.getElementById(id);
+  const tip = $('tip');
+  const alertBox = $('alert');
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  function showAlert(html) {
+    alertBox.innerHTML = html + '<button class="close" type="button" aria-label="关闭">×</button>';
+    alertBox.hidden = false;
+    alertBox.querySelector('.close').addEventListener('click', () => { alertBox.hidden = true; });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+  }
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function makeCanvas(size) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = size;
+    return cv;
+  }
+
+  function makeGlowTexture(inner = 'rgba(244,234,216,1)', mid = 'rgba(244,234,216,.4)') {
+    const cv = makeCanvas(128);
+    const ctx = cv.getContext('2d');
+    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, inner);
+    g.addColorStop(0.32, mid);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(cv);
+  }
+
+  // 甲骨文字形：以象形线段手工绘制（100×100 坐标系内的笔画折线）
+  const ORACLE_STROKES = {
+    '天': [[[50, 10], [50, 28]], [[24, 34], [76, 34]], [[50, 36], [32, 84]], [[50, 36], [68, 84]]],
+    '山': [[[16, 78], [84, 78]], [[50, 26], [50, 78]], [[32, 46], [32, 78]], [[68, 46], [68, 78]]],
+    '水': [[[50, 10], [42, 34], [58, 58], [46, 86]], [[30, 26], [24, 42]], [[70, 24], [76, 40]], [[28, 60], [22, 76]], [[74, 58], [80, 74]]],
+    '日': [[[30, 18], [70, 18], [70, 80], [30, 80], [30, 18]], [[44, 49], [56, 49]]],
+    '月': [[[62, 10], [42, 38], [36, 68], [46, 90]], [[58, 26], [48, 50], [46, 70]]],
+    '人': [[[56, 14], [38, 48]], [[38, 48], [26, 86]], [[46, 42], [70, 80]]],
+    '木': [[[50, 12], [50, 88]], [[50, 34], [30, 16]], [[50, 34], [70, 16]], [[50, 64], [32, 84]], [[50, 64], [68, 84]]],
+    '雨': [[[24, 16], [76, 16]], [[36, 34], [32, 52]], [[52, 34], [48, 52]], [[68, 34], [64, 52]], [[40, 64], [36, 82]], [[60, 64], [56, 82]]],
+    '口': [[[32, 28], [68, 28], [68, 72], [32, 72], [32, 28]]],
+    '云': [[[26, 26], [74, 26]], [[34, 44], [66, 44]], [[50, 58], [36, 76]], [[36, 76], [56, 84]], [[56, 84], [66, 64]]],
+    '星': [[[24, 18], [42, 18], [42, 34], [24, 34], [24, 18]], [[58, 18], [76, 18], [76, 34], [58, 34], [58, 18]], [[34, 60], [66, 60]], [[50, 60], [50, 84]], [[38, 84], [62, 84]]],
+    '古': [[[30, 16], [70, 16]], [[50, 16], [50, 40]], [[26, 48], [74, 48]], [[30, 56], [30, 84]], [[70, 56], [70, 84]], [[30, 84], [70, 84]]]
+  };
+
+  function makeGlyphTexture(ch) {
+    const S = 192;
+    const cv = makeCanvas(S);
+    const ctx = cv.getContext('2d');
+    ctx.save();
+    ctx.translate(S / 2, S / 2);
+    ctx.rotate((Math.random() - 0.5) * 0.18);
+    const sc = S / 145;
+    ctx.scale(sc, sc);
+    ctx.translate(-50, -50);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 5;
+    // 双层描摹：外层柔光 + 内层墨线，模拟刻辞笔画
+    for (const pass of [0, 1]) {
+      ctx.strokeStyle = pass === 0 ? 'rgba(216,185,120,0.5)' : 'rgba(228,206,158,0.95)';
+      ctx.lineWidth = pass === 0 ? 9 : 5;
+      ctx.shadowColor = 'rgba(216,185,120,0.85)';
+      ctx.shadowBlur = pass === 0 ? 18 : 6;
+      for (const stroke of ORACLE_STROKES[ch]) {
+        ctx.beginPath();
+        ctx.moveTo(stroke[0][0], stroke[0][1]);
+        for (let i = 1; i < stroke.length; i++) ctx.lineTo(stroke[i][0], stroke[i][1]);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  function makePageTexture() {
+    const W = 256, H = 340;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    // 泛黄纸面
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, 'rgba(216,198,160,0.9)');
+    g.addColorStop(0.5, 'rgba(198,178,138,0.82)');
+    g.addColorStop(1, 'rgba(178,158,120,0.75)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    // 朱线边框（古籍界栏）
+    ctx.strokeStyle = 'rgba(128,100,62,0.5)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(7, 7, W - 14, H - 14);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(14, 14, W - 28, H - 28);
+    // 版心竖排文字（以短线段模拟墨迹）
+    ctx.strokeStyle = 'rgba(88,68,40,0.5)';
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    const cols = 7;
+    for (let c = 0; c < cols; c++) {
+      const x = 36 + c * 30;
+      let y = 42 + Math.random() * 18;
+      const end = H - 44 - Math.random() * 36;
+      while (y < end) {
+        const seg = 9 + Math.random() * 13;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + seg);
+        ctx.stroke();
+        y += seg + 8 + Math.random() * 6;
+      }
+    }
+    // 残缺撕边
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    for (let i = 0; i < 30; i++) {
+      ctx.beginPath();
+      ctx.arc(Math.random() * W, Math.random() < 0.5 ? 0 : H, 3 + Math.random() * 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(Math.random() < 0.5 ? 0 : W, Math.random() * H, 3 + Math.random() * 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  function makeNodeLabelTexture(text) {
+    const W = 512, H = 128;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '500 54px "PingFang SC","Microsoft YaHei",system-ui,sans-serif';
+    ctx.shadowColor = 'rgba(255,255,255,0.85)';
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.fillText(text, W / 2, H / 2);
+    ctx.shadowBlur = 4;
+    ctx.fillText(text, W / 2, H / 2);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  function makeLabelTexture(text, color) {
+    const W = 1024, H = 192;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '600 84px "STKaiti","KaiTi","Songti SC","Noto Serif SC",serif';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 26;
+    ctx.fillStyle = 'rgba(244,234,216,0.96)';
+    ctx.fillText(text, W / 2, H / 2);
+    ctx.shadowBlur = 10;
+    ctx.fillText(text, W / 2, H / 2);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  /* ============================================================
+     场景骨架
+     ============================================================ */
+
+  const stage = $('stage');
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+  } catch (e) {
+    document.body.classList.add('no-webgl');
+    showAlert('当前环境不支持 WebGL，无法渲染三维星云。请使用 Chrome / Edge 等现代浏览器打开。');
+    throw e;
+  }
+  renderer.setClearColor(0x070605, 1);
+  stage.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x070605, 0.0062);
+
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 600);
+  camera.position.set(0, 26, 76);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.autoRotate = !reduceMotion;
+  controls.autoRotateSpeed = 0.35;
+  controls.minDistance = 14;
+  controls.maxDistance = 260;
+  controls.target.set(0, 0, 0);
+
+  const HOME = { pos: new THREE.Vector3(0, 26, 76), target: new THREE.Vector3(0, 0, 0) };
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    renderer.setSize(w, h);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  /* ============================================================
+     背景：国风虚空 —— 残页篆字递归繁衍 + 星河 + 尘埃
+     ============================================================ */
+
+  const bg = (() => {
+    const MAX_SHARDS = 140;
+    const MAX_GEN = 5;
+    const RECYCLE_DIST = 70;
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const CHARS = Object.keys(ORACLE_STROKES);
+    const textures = CHARS.map(makeGlyphTexture);
+    const geometry = new THREE.PlaneGeometry(1, 1);
+
+    const shards = [];
+    for (let i = 0; i < MAX_SHARDS; i++) {
+      const material = new THREE.MeshBasicMaterial({
+        map: textures[i % textures.length],
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.visible = false;
+      group.add(mesh);
+      shards.push({ mesh, active: false, gen: 0, split: false, splitAt: 0, base: 0, phase: 0, spin: 0, vel: new THREE.Vector3() });
+    }
+
+    let now = 0;
+
+    // 满屏球壳随机点：书页与汉字都铺满视野，不向中心聚拢
+    function randomShell(min, max) {
+      const r = rand(min, max);
+      const th = Math.random() * Math.PI * 2;
+      const ph = Math.acos(2 * Math.random() - 1);
+      return new THREE.Vector3(
+        r * Math.sin(ph) * Math.cos(th),
+        r * Math.cos(ph) * 0.75,
+        r * Math.sin(ph) * Math.sin(th)
+      );
+    }
+
+    function spawnAt(s, pos, gen) {
+      s.active = true;
+      s.gen = gen;
+      s.split = false;
+      s.splitAt = now + rand(2.4, 4.8);
+      s.phase = Math.random() * Math.PI * 2;
+      s.spin = (Math.random() < 0.5 ? -1 : 1) * rand(0.1, 0.3);
+      // 速度以向外飘散为主 + 轻微抖动：碎片持续向四周扩散，不回堵中心
+      if (pos.lengthSq() > 0.01) {
+        const dir = pos.clone().normalize().multiplyScalar(rand(0.7, 1.2));
+        dir.x += rand(-0.28, 0.28);
+        dir.y += rand(-0.22, 0.22);
+        dir.z += rand(-0.28, 0.28);
+        s.vel.copy(dir);
+      } else {
+        s.vel.set(rand(-0.6, 0.6), rand(-0.5, 0.5), rand(-0.6, 0.6));
+      }
+      const scale = rand(3.4, 6.4) * Math.pow(0.8, gen);
+      s.mesh.visible = true;
+      s.mesh.position.copy(pos);
+      s.mesh.scale.set(scale, scale * rand(0.85, 1.2), 1);
+      s.mesh.rotation.set(rand(-0.7, 0.7), rand(-0.7, 0.7), Math.random() * Math.PI * 2);
+      s.mesh.material.map = textures[(Math.random() * textures.length) | 0];
+      s.base = Math.max(0.09, 0.34 - gen * 0.028);
+      s.mesh.material.opacity = s.base;
+    }
+
+    function takeInactive() {
+      for (const s of shards) if (!s.active) return s;
+      return null;
+    }
+
+    function recycleFarthest() {
+      let far = null, max = -1;
+      for (const s of shards) {
+        const d = s.mesh.position.length();
+        if (d > max) { max = d; far = s; }
+      }
+      return far;
+    }
+
+    function emit(pos, gen) {
+      const s = takeInactive() || recycleFarthest();
+      if (!s) return null;
+      spawnAt(s, pos, gen);
+      return s;
+    }
+
+    // 初始即满屏分布
+    for (let i = 0; i < 70; i++) emit(randomShell(12, 52), 0);
+
+    function update(dt) {
+      now += dt;
+      for (const s of shards) {
+        if (!s.active) continue;
+        s.mesh.position.addScaledVector(s.vel, dt);
+        s.mesh.position.x += Math.sin(now * 0.32 + s.phase) * 0.006;
+        s.mesh.position.y += Math.cos(now * 0.27 + s.phase) * 0.006;
+        s.vel.multiplyScalar(1 - 0.04 * dt);
+        s.mesh.rotation.z += s.spin * dt * 0.14;
+        s.mesh.rotation.x += s.spin * dt * 0.05;
+
+        const dist = s.mesh.position.length();
+        const fade = 1 - Math.min(1, Math.max(0, (dist - 12) / 40)) * 0.82;
+        const dc = s.mesh.position.distanceTo(camera.position);
+        const nearFade = Math.min(1, Math.max(0.04, (dc - 3) / 6));
+        s.mesh.material.opacity = s.base * fade * nearFade;
+
+        if (!s.split && s.gen < MAX_GEN && now > s.splitAt) {
+          const free = shards.reduce((n, x) => n + (x.active ? 0 : 1), 0);
+          if (free >= 2) {
+            s.split = true;
+            for (let k = 0; k < 2; k++) {
+              const off = new THREE.Vector3(rand(-1.3, 1.3), rand(-1.3, 1.3), rand(-1.3, 1.3));
+              emit(s.mesh.position.clone().add(off), s.gen + 1);
+            }
+          }
+        }
+
+        if (dist > RECYCLE_DIST) {
+          spawnAt(s, randomShell(14, 52), 0);
+        }
+      }
+    }
+
+    // ---- 星河：参考「流动星河」风格 ----
+    // 雾团织出银河厚度与明暗；星子按星团聚散、团间留暗处；四档色调；亮星嵌光晕；逐星闪烁
+    const bandGroups = [];
+    const starMats = [];
+    const brights = [];
+    const glowMap = makeGlowTexture('rgba(255,244,214,1)', 'rgba(255,244,214,.5)');
+
+    const starVert = `
+      attribute float aSize;
+      attribute float aPhase;
+      attribute float aTw;
+      attribute vec3 aColor;
+      uniform float uTime;
+      uniform float uPR;
+      varying vec3 vColor;
+      varying float vA;
+      void main() {
+        vColor = aColor;
+        vA = 0.55 + 0.45 * sin(uTime * aTw + aPhase);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = aSize * uPR * (300.0 / max(1.0, -mv.z)) * (0.85 + 0.15 * sin(uTime * aTw * 0.7 + aPhase));
+        gl_Position = projectionMatrix * mv;
+      }`;
+    const starFrag = `
+      uniform sampler2D uMap;
+      varying vec3 vColor;
+      varying float vA;
+      void main() {
+        vec4 tex = texture2D(uMap, gl_PointCoord);
+        gl_FragColor = vec4(vColor, vA) * tex;
+      }`;
+
+    function gaussRand() {
+      let u = 0, v = 0;
+      while (!u) u = Math.random();
+      while (!v) v = Math.random();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.2831853 * v);
+    }
+
+    function buildBand({ rMin, rMax, count, tiltX, tiltZ, spin, baseHue }) {
+      const grp = new THREE.Group();
+      grp.rotation.x = tiltX;
+      grp.rotation.z = tiltZ;
+      group.add(grp);
+      bandGroups.push({ grp, spin });
+
+      // 星云雾团：宽而软
+      const clouds = 26;
+      for (let i = 0; i < clouds; i++) {
+        const mat = new THREE.SpriteMaterial({
+          map: makeGlowTexture('rgba(255,250,235,.9)', 'rgba(255,240,210,.32)'),
+          color: new THREE.Color().setHSL((baseHue + rand(-8, 10)) / 360, 0.5, 0.62),
+          transparent: true,
+          opacity: rand(0.04, 0.09),
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+        const sp = new THREE.Sprite(mat);
+        const r = rand(rMin, rMax);
+        const th = Math.random() * Math.PI * 2;
+        sp.position.set(Math.cos(th) * r, gaussRand() * 5, Math.sin(th) * r);
+        const sc = rand(26, 60);
+        sp.scale.set(sc, sc * rand(0.5, 0.8), 1);
+        grp.add(sp);
+      }
+
+      // 星团：让星子成团成块，团与团之间留出暗处
+      const knots = Array.from({ length: 4 + Math.round(Math.random() * 3) }, () => ({
+        u: Math.random() * Math.PI * 2,
+        w: 0.14 + Math.random() * 0.3,
+        wgt: 0.4 + Math.random() * 0.8
+      }));
+      const knotSum = knots.reduce((a, b) => a + b.wgt, 0);
+
+      // 星子四档色调：近白高光 / 亮调 / 中调 / 邻近色
+      const tones = [
+        { h: baseHue, s: 0.5, l: 0.92, w: 0.16 },
+        { h: baseHue, s: 0.62, l: 0.76, w: 0.28 },
+        { h: baseHue, s: 0.55, l: 0.6, w: 0.34 },
+        { h: (baseHue + 330) % 360, s: 0.42, l: 0.6, w: 0.22 }
+      ];
+      const cols = tones.map((t) => new THREE.Color().setHSL(t.h / 360, t.s, t.l));
+
+      const pos = new Float32Array(count * 3);
+      const col = new Float32Array(count * 3);
+      const siz = new Float32Array(count);
+      const pha = new Float32Array(count);
+      const tw = new Float32Array(count);
+      for (let k = 0; k < count; k++) {
+        let pick = Math.random() * knotSum, ki = 0;
+        for (let q = 0; q < knots.length; q++) { pick -= knots[q].wgt; if (pick <= 0) { ki = q; break; } }
+        const kn = knots[ki];
+        const u = kn.u + gaussRand() * kn.w;
+        const off = gaussRand() * 0.5;
+        const near = 1 - Math.min(1, Math.abs(off) / 1.45);
+        const r = rand(rMin, rMax);
+        pos[k * 3] = Math.cos(u) * r;
+        pos[k * 3 + 1] = off * 7;
+        pos[k * 3 + 2] = Math.sin(u) * r;
+
+        let tp = Math.random(), gi = 2, acc = 0;
+        for (let q = 0; q < tones.length; q++) { acc += tones[q].w; if (tp <= acc) { gi = q; break; } }
+        col[k * 3] = cols[gi].r; col[k * 3 + 1] = cols[gi].g; col[k * 3 + 2] = cols[gi].b;
+
+        // 密度向河轴聚拢：越靠边越暗越小
+        siz[k] = (0.5 + Math.pow(Math.random(), 2.8) * 2.6) * (0.6 + 0.55 * near);
+        pha[k] = Math.random() * Math.PI * 2;
+        tw[k] = 0.5 + Math.random() * 1.8;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+      geo.setAttribute('aSize', new THREE.BufferAttribute(siz, 1));
+      geo.setAttribute('aPhase', new THREE.BufferAttribute(pha, 1));
+      geo.setAttribute('aTw', new THREE.BufferAttribute(tw, 1));
+      const mat = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uPR: { value: Math.min(window.devicePixelRatio || 1, 1.75) },
+          uMap: { value: glowMap }
+        },
+        vertexShader: starVert,
+        fragmentShader: starFrag,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      starMats.push(mat);
+      grp.add(new THREE.Points(geo, mat));
+
+      // 亮星：带光晕，稀疏嵌在河中
+      for (let i = 0; i < 9; i++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: glowMap, color: 0xfff2d8, transparent: true,
+          opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false
+        }));
+        const r = rand(rMin, rMax), th = Math.random() * Math.PI * 2;
+        sp.position.set(Math.cos(th) * r, gaussRand() * 4, Math.sin(th) * r);
+        const sc = rand(1.8, 3.4);
+        sp.scale.set(sc, sc, 1);
+        grp.add(sp);
+        brights.push({ sp, a: rand(0.35, 0.7), tw: rand(0.6, 1.8), ph: rand(0, 6.28) });
+      }
+    }
+
+    buildBand({ rMin: 70, rMax: 130, count: 850, tiltX: 0.02, tiltZ: 0.03, spin: 0.016, baseHue: 42 });
+    buildBand({ rMin: 56, rMax: 108, count: 650, tiltX: -0.05, tiltZ: 0.02, spin: -0.011, baseHue: 36 });
+
+    // ---- 深空尘埃 ----
+    {
+      const N = 200;
+      const arr = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        const r = rand(14, 62);
+        const th = Math.random() * Math.PI * 2;
+        const ph = Math.acos(2 * Math.random() - 1);
+        arr[i * 3] = r * Math.sin(ph) * Math.cos(th);
+        arr[i * 3 + 1] = r * Math.cos(ph) * 0.6;
+        arr[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      const dust = new THREE.Points(geo, new THREE.PointsMaterial({
+        map: makeGlowTexture('rgba(239,228,204,1)', 'rgba(239,228,204,.55)'),
+        color: 0xefe4cc, size: 0.55, transparent: true, opacity: 0.62,
+        blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+      }));
+      group.add(dust);
+    }
+
+    // ---- 古籍残页：缓缓漂浮（周边均匀分布，避开视野正中）----
+    const pageTexs = [makePageTexture(), makePageTexture(), makePageTexture()];
+    const pages = [];
+    const PAGE_COUNT = reduceMotion ? 0 : 30;
+    const GOLD = Math.PI * (3 - Math.sqrt(5));
+    // 球面等比分层：斐波那契均匀撒点，半径 ≥26 避开中心
+    function shellPos(i, out) {
+      const y = ((i + 0.5) / PAGE_COUNT) * 2 - 1;
+      const rr = Math.sqrt(Math.max(0, 1 - y * y));
+      const th = GOLD * i * 7.3;
+      const r = 26 + ((i * 0.618) % 1) * 32;
+      out.set(Math.cos(th) * rr * r, y * 30, Math.sin(th) * rr * r);
+      return out;
+    }
+    for (let i = 0; i < PAGE_COUNT; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        map: pageTexs[i % pageTexs.length],
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+      const mesh = new THREE.Mesh(geometry, mat);
+      group.add(mesh);
+      pages.push({
+        mesh,
+        pos: shellPos(i, new THREE.Vector3()),
+        vel: new THREE.Vector3(rand(-0.18, 0.18), rand(0.06, 0.3), rand(-0.18, 0.18)),
+        rot: new THREE.Vector3(rand(-0.05, 0.05), rand(-0.07, 0.07), rand(-0.04, 0.04)),
+        base: rand(0.1, 0.16),
+        phase: rand(0, Math.PI * 2),
+        size: rand(2.4, 5)
+      });
+    }
+
+    function updatePages(dt) {
+      for (const p of pages) {
+        p.pos.addScaledVector(p.vel, dt);
+        p.pos.x += Math.sin(now * 0.15 + p.phase) * 0.012;
+        p.pos.y += Math.cos(now * 0.12 + p.phase) * 0.01;
+        if (p.pos.length() > 70) {
+          // 回到球壳上随机一点，保持周边分布
+          const r = rand(28, 58);
+          const th = Math.random() * Math.PI * 2;
+          const ph = Math.acos(2 * Math.random() - 1);
+          p.pos.set(
+            r * Math.sin(ph) * Math.cos(th),
+            r * Math.cos(ph) * 0.8,
+            r * Math.sin(ph) * Math.sin(th)
+          );
+          p.vel.set(rand(-0.18, 0.18), rand(0.06, 0.3), rand(-0.18, 0.18));
+        }
+        p.mesh.position.copy(p.pos);
+        p.mesh.rotation.x += p.rot.x * dt;
+        p.mesh.rotation.y += p.rot.y * dt;
+        p.mesh.rotation.z += p.rot.z * dt;
+        const sc = p.size;
+        p.mesh.scale.set(sc, sc * (340 / 256), 1);
+        const dc = p.mesh.position.distanceTo(camera.position);
+        const nearFade = Math.min(1, Math.max(0.05, (dc - 6) / 10));
+        p.mesh.material.opacity = p.base * nearFade;
+      }
+    }
+
+    if (!reduceMotion) {
+      for (let i = 0; i < 24 * 60; i++) update(1 / 60);
+    }
+
+    return {
+      update(dt) {
+        if (reduceMotion) return;
+        update(dt);
+        updatePages(dt);
+        for (const b of bandGroups) b.grp.rotation.y += b.spin * dt;
+        for (const m of starMats) m.uniforms.uTime.value = now;
+        for (const b of brights) b.sp.material.opacity = b.a * (0.55 + 0.45 * Math.sin(now * b.tw + b.ph));
+      }
+    };
+  })();
+
+  /* ============================================================
+     知识星云：每个 Vault 一团星云
+     ============================================================ */
+
+  const VAULT_HUES = [
+    { hex: 0xd8b978, css: '#d8b978' },
+    { hex: 0x7fc4c4, css: '#7fc4c4' },
+    { hex: 0xb48ad0, css: '#b48ad0' },
+    { hex: 0xd08a7a, css: '#d08a7a' },
+    { hex: 0x9ab87a, css: '#9ab87a' }
+  ];
+
+  const clusters = [];
+  const allNodes = [];
+  const allEdges = [];
+  const flowTex = makeGlowTexture('rgba(255,244,214,1)', 'rgba(255,244,214,.5)');
+  const pulseTex = makeGlowTexture('rgba(224,246,255,1)', 'rgba(174,230,255,.55)');
+
+  const galaxy = new THREE.Group();
+  scene.add(galaxy);
+
+  let simEpoch = 0;
+  const _v1 = new THREE.Vector3();
+
+  function buildCluster(vault, graph, hue, anchor) {
+    const n = graph.nodes.length;
+    const spread = clamp(12 + Math.sqrt(n) * 5, 14, 40);
+    const group = new THREE.Group();
+    group.position.copy(anchor);
+    galaxy.add(group);
+
+    // 自转子层：星点 / 连线 / 雾团随之缓慢旋转，悬停时暂停；标签与光晕保持静止
+    const spin = new THREE.Group();
+    group.add(spin);
+
+    // 力导向布局（离线跑完再定格进 3D）
+    const simNodes = graph.nodes.map((d) => ({ ...d }));
+    const simLinks = graph.links.map((l) => ({ ...l }));
+    const simulation = d3.forceSimulation(simNodes)
+      .force('link', d3.forceLink(simLinks).id((d) => d.id).distance(spread * 0.28).strength(0.5))
+      .force('charge', d3.forceManyBody().strength(-spread * 3.2))
+      .force('center', d3.forceCenter(0, 0))
+      .force('collide', d3.forceCollide(spread * 0.045))
+      .stop();
+    for (let i = 0; i < 300; i++) simulation.tick();
+
+    // 归一化：把布局缩放居中到星云尺度内（斥力会把个别节点推得很远）
+    {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const s of simNodes) {
+        minX = Math.min(minX, s.x); maxX = Math.max(maxX, s.x);
+        minY = Math.min(minY, s.y); maxY = Math.max(maxY, s.y);
+      }
+      const w = Math.max(maxX - minX, 1e-3), h = Math.max(maxY - minY, 1e-3);
+      const fit = (spread * 1.25) / Math.max(w, h);
+      for (const s of simNodes) {
+        s.x = (s.x - (minX + maxX) / 2) * fit;
+        s.y = (s.y - (minY + maxY) / 2) * fit;
+      }
+    }
+
+    const degree = new Map();
+    for (const l of simLinks) {
+      degree.set(l.source.id, (degree.get(l.source.id) || 0) + 1);
+      degree.set(l.target.id, (degree.get(l.target.id) || 0) + 1);
+    }
+
+    // 星云雾团（朦胧本体，缓慢漂移自转）
+    const fogSprites = [];
+    const fogCount = clamp(3 + Math.round(n / 6), 3, 6);
+    for (let i = 0; i < fogCount; i++) {
+      const mat = new THREE.SpriteMaterial({
+        map: makeGlowTexture('rgba(255,255,255,.9)', 'rgba(255,255,255,.28)'),
+        color: hue.hex,
+        transparent: true,
+        opacity: rand(0.07, 0.13),
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const sp = new THREE.Sprite(mat);
+      sp.position.set(rand(-spread * 0.4, spread * 0.4), rand(-spread * 0.28, spread * 0.28), rand(-3, 3));
+      const sc = spread * rand(0.85, 1.5);
+      sp.scale.set(sc, sc * rand(0.6, 0.9), 1);
+      spin.add(sp);
+      fogSprites.push({ sp, rot: rand(-0.05, 0.05), drift: rand(0.1, 0.3), phase: rand(0, 6.28) });
+    }
+
+    // 悬停光晕
+    const haloMat = new THREE.SpriteMaterial({
+      map: makeGlowTexture('rgba(255,255,255,.85)', 'rgba(255,255,255,.3)'),
+      color: hue.hex,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const halo = new THREE.Sprite(haloMat);
+    halo.position.set(0, 0, -2);
+    const haloScale = spread * 2.6;
+    halo.scale.set(haloScale, haloScale * 0.8, 1);
+    group.add(halo);
+
+    // 仓库名标签
+    const labelTex = makeLabelTexture(vault.vaultName + ' · ' + vault.mdCount + ' 篇', hue.css);
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: labelTex, transparent: true, opacity: 0.82, depthWrite: false
+    }));
+    label.position.set(0, spread * 0.72 + 5, 0);
+    label.scale.set(20, 20 * (192 / 1024), 1);
+    group.add(label);
+
+    // 节点：白色发光、呼吸明灭的星星 + 常显名称标签
+    const nodeObjs = [];
+    const glowTexNode = makeGlowTexture('rgba(255,255,255,1)', 'rgba(255,255,255,.4)');
+    for (const sim of simNodes) {
+      const deg = degree.get(sim.id) || 0;
+      const size = clamp(1.3 + deg * 0.35, 1.3, 3.2);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowTexNode,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      }));
+      sp.position.set(
+        sim.x ?? rand(-spread / 2, spread / 2),
+        (sim.y ?? 0) * 0.62 + rand(-1.6, 1.6),
+        rand(-2.4, 2.4)
+      );
+      sp.scale.set(size, size, 1);
+      spin.add(sp);
+
+      const pick = new THREE.Mesh(
+        new THREE.SphereGeometry(size + 1.15, 8, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      pick.position.copy(sp.position);
+      spin.add(pick);
+
+      const label = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: makeNodeLabelTexture(sim.name),
+        transparent: true,
+        opacity: 0.62,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      }));
+      const lw = clamp(2.6 + sim.name.length * 1.1, 4, 8.5);
+      label.scale.set(lw, lw * (128 / 512), 1);
+      label.position.set(sp.position.x, sp.position.y + size * 0.5 + 1.15, sp.position.z);
+      spin.add(label);
+
+      const nodeObj = {
+        id: sim.id, name: sim.name, vault, hue, deg,
+        sprite: sp, pick, label, size,
+        home: sp.position.clone(),
+        offset: new THREE.Vector3(),
+        baseOpacity: 0.9,
+        phase: rand(0, Math.PI * 2),
+        speed: rand(0.8, 1.6),
+        lit: false, flash: 0
+      };
+      pick.userData.node = nodeObj;
+      nodeObjs.push(nodeObj);
+      allNodes.push(nodeObj);
+    }
+
+    // 连线 + 环境流光
+    const edgeObjs = [];
+    const lineMat = new THREE.LineBasicMaterial({
+      color: hue.hex, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    for (const l of simLinks) {
+      const a = nodeObjs.find((x) => x.id === (l.source.id || l.source));
+      const b = nodeObjs.find((x) => x.id === (l.target.id || l.target));
+      if (!a || !b) continue;
+
+      const geo = new THREE.BufferGeometry().setFromPoints([a.sprite.position, b.sprite.position]);
+      const line = new THREE.Line(geo, lineMat);
+      spin.add(line);
+
+      const glow = new THREE.Line(geo, new THREE.LineBasicMaterial({
+        color: 0xfff0c8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false
+      }));
+      spin.add(glow);
+
+      const fSp = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: flowTex, color: hue.hex, transparent: true, opacity: 0.5,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      }));
+      fSp.scale.set(0.5, 0.5, 1);
+      spin.add(fSp);
+
+      edgeObjs.push({
+        a, b, line, glow, spin, geo,
+        len: a.sprite.position.distanceTo(b.sprite.position),
+        flow: { sp: fSp, t: Math.random(), dur: clamp(a.sprite.position.distanceTo(b.sprite.position) / 2.2, 2.2, 6) }
+      });
+    }
+    for (const e of edgeObjs) allEdges.push(e);
+
+    // 星团拾取球（悬停放大 / 点击聚焦）
+    const clusterPick = new THREE.Mesh(
+      new THREE.SphereGeometry(spread * 0.85, 12, 12),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    );
+    spin.add(clusterPick);
+
+    const cluster = {
+      vault, hue, group, spin, anchor, spread,
+      fogSprites, halo, label, nodeObjs, edgeObjs, clusterPick, lineMat,
+      rotSpeed: (Math.random() < 0.5 ? -1 : 1) * rand(0.025, 0.055),
+      bobPhase: rand(0, Math.PI * 2),
+      visT: 1,
+      dirty: false,
+      hoverT: 0
+    };
+    for (const nd of nodeObjs) nd.cluster = cluster;
+    for (const e of edgeObjs) e.cluster = cluster;
+    clusterPick.userData.cluster = cluster;
+    clusters.push(cluster);
+  }
+
+  /* ============================================================
+     交互：悬停 / 点击波纹点亮
+     ============================================================ */
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  let hoveredNode = null;
+  let hoveredCluster = null;
+  let activeCluster = null;   // 当前聚焦（仅展示）的星云；null = 全景
+  let camTween = null;
+  let wave = null;
+
+  function clearWave() {
+    if (wave) {
+      for (const task of wave.tasks) {
+        if (task.pulse) {
+          task.edge.spin.remove(task.pulse);
+          task.pulse.material.dispose();
+          task.pulse = null;
+        }
+      }
+    }
+    wave = null;
+    for (const nd of allNodes) {
+      nd.lit = false;
+      nd.flash = 0;
+    }
+    for (const e of allEdges) e.glow.material.opacity = 0;
+  }
+
+  // 恢复星云初始形态（清除所有拖拽偏移）
+  function resetShape(c) {
+    for (const nd of c.nodeObjs) nd.offset.set(0, 0, 0);
+    c.dirty = true;
+  }
+
+  function startWave(root) {
+    clearWave();
+    const layers = new Map([[root, 0]]);
+    const queue = [root];
+    const tasks = [];
+    while (queue.length) {
+      const cur = queue.shift();
+      const d = layers.get(cur);
+      for (const e of allEdges) {
+        if (e.a !== cur && e.b !== cur) continue;
+        const other = e.a === cur ? e.b : e.a;
+        if (layers.has(other)) continue;
+        layers.set(other, d + 1);
+        tasks.push({
+          edge: e, from: cur, to: other,
+          start: d * 0.62 + 0.15,
+          dur: clamp(e.len / 14, 0.25, 0.9),
+          done: false, pulse: null
+        });
+        queue.push(other);
+      }
+    }
+    wave = { root, tasks, t0: simEpoch };
+    root.lit = true;
+    root.flash = 0.001;
+  }
+
+  function updateWave() {
+    if (!wave) return;
+    const t = simEpoch - wave.t0;
+    for (const task of wave.tasks) {
+      if (task.done || t < task.start) continue;
+      const k = clamp((t - task.start) / task.dur, 0, 1);
+
+      if (!task.pulse) {
+        task.pulse = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: pulseTex, color: 0xaee6ff, transparent: true, opacity: 0.95,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        }));
+        task.pulse.scale.set(1.9, 1.9, 1);
+        task.edge.spin.add(task.pulse);
+      }
+      task.pulse.position.lerpVectors(task.edge.a.sprite.position, task.edge.b.sprite.position, k);
+      task.pulse.material.opacity = 0.95 * (1 - Math.abs(k - 0.5) * 0.5);
+      task.edge.glow.material.opacity = 0.15 + 0.6 * Math.sin(k * Math.PI);
+
+      if (k >= 1) {
+        task.done = true;
+        task.edge.spin.remove(task.pulse);
+        task.pulse = null;
+        task.edge.glow.material.opacity = 0.85;
+        if (!task.to.lit) {
+          task.to.lit = true;
+          task.to.flash = 0.001;
+        }
+      }
+    }
+  }
+
+  function applyNodeVisual(dt) {
+    for (const nd of allNodes) {
+      const breathe = 0.5 + 0.5 * Math.sin(simEpoch * nd.speed + nd.phase);
+      let opacity = nd.baseOpacity * (0.62 + 0.38 * breathe);
+      let scaleK = 0.92 + 0.1 * breathe;
+
+      if (nd.flash > 0) {
+        nd.flash += dt;
+        const k = clamp(nd.flash / 0.8, 0, 1);
+        scaleK *= 1 + Math.sin(k * Math.PI) * 1.6;
+        opacity = Math.min(1, opacity + Math.sin(k * Math.PI) * 0.5);
+        if (k >= 1) nd.flash = 0;
+      }
+
+      if (nd.lit && nd.flash === 0) {
+        // 点亮态：节点变大、常亮
+        opacity = 1;
+        scaleK = 1.32 + 0.08 * breathe;
+      }
+
+      if (wave && !nd.lit) {
+        opacity *= 0.14;
+        scaleK *= 0.8;
+      }
+
+      if (hoveredNode === nd && !wave) {
+        opacity = 1;
+        scaleK *= 1.35;
+      }
+
+      opacity *= nd.cluster.visT;
+      nd.sprite.material.opacity += (opacity - nd.sprite.material.opacity) * Math.min(1, dt * 10);
+      const s = nd.size * scaleK;
+      nd.sprite.scale.x += (s - nd.sprite.scale.x) * Math.min(1, dt * 10);
+      nd.sprite.scale.y = nd.sprite.scale.x;
+
+      // 名称标签：常显，点亮时增亮、未点亮时压暗
+      let lOp = 0.62;
+      if (wave) lOp = nd.lit ? 0.95 : 0.08;
+      else if (hoveredNode === nd) lOp = 1;
+      lOp *= nd.cluster.visT;
+      nd.label.material.opacity += (lOp - nd.label.material.opacity) * Math.min(1, dt * 8);
+    }
+  }
+
+  function applyClusterVisual(dt) {
+    for (const c of clusters) {
+      const hovered = hoveredCluster === c;
+      const selected = activeCluster === c;
+      const targetK = (hovered || selected) ? 1 : 0;
+      c.hoverT += (targetK - c.hoverT) * Math.min(1, dt * 6);
+      const k = c.hoverT;
+      const sc = 1 + k * 0.14;
+      c.group.scale.set(sc, sc, sc);
+
+      // 聚焦态：仅展示当前星云，其余淡出隐藏
+      const visTarget = (!activeCluster || selected) ? 1 : 0;
+      c.visT += (visTarget - c.visT) * Math.min(1, dt * 5);
+      c.group.visible = c.visT > 0.02;
+
+      // 悬停时整团星云停止运动（自转 / 浮沉 / 雾团漂移），移开恢复
+      if (!hovered && !reduceMotion) {
+        c.spin.rotation.y += c.rotSpeed * dt;
+        c.group.position.y = c.anchor.y + Math.sin(simEpoch * 0.12 + c.bobPhase) * 0.8;
+      }
+      for (const f of c.fogSprites) {
+        if (!hovered && !reduceMotion) {
+          f.sp.material.rotation += f.rot * dt;
+          f.sp.position.x += Math.sin(simEpoch * 0.11 + f.phase) * 0.012 * f.drift;
+          f.sp.position.y += Math.cos(simEpoch * 0.09 + f.phase) * 0.008 * f.drift;
+        }
+        f.sp.material.opacity = (0.055 + 0.05 * k) * (0.8 + 0.2 * Math.sin(simEpoch * 0.3 + f.phase)) * c.visT;
+      }
+      c.halo.material.opacity = k * 0.2 * c.visT;
+      c.label.material.opacity = (0.72 + k * 0.28) * c.visT;
+      // 选中（波纹点亮中）时连线加粗提亮
+      c.lineMat.opacity = (wave ? 0.5 : 0.2) * c.visT;
+    }
+  }
+
+  function applyEdgeFlow(dt) {
+    for (const e of allEdges) {
+      const f = e.flow;
+      f.t = (f.t + dt / f.dur) % 1;
+      f.sp.position.lerpVectors(e.a.sprite.position, e.b.sprite.position, f.t);
+      const lit = e.glow.material.opacity > 0.02;
+      f.sp.material.opacity = (lit ? 0.95 : 0.42) * e.cluster.visT;
+      const sc = (lit ? 0.9 : 0.5) * (wave ? 1.35 : 1);
+      f.sp.scale.set(sc, sc, 1);
+    }
+  }
+
+  function applyDrag(dt) {
+    for (const c of clusters) {
+      const dragging = drag && drag.moved && drag.node.cluster === c;
+
+      // 拖拽中：本次增量沿连线逐层衰减传播，叠加到开拖时的快照上
+      if (dragging) {
+        const delta = drag.node.offset.clone().sub(drag.base.get(drag.node));
+        const layers = new Map([[drag.node, delta]]);
+        const queue = [[drag.node, 0]];
+        while (queue.length) {
+          const [cur, depth] = queue.shift();
+          const curOff = layers.get(cur);
+          for (const e of c.edgeObjs) {
+            const other = e.a === cur ? e.b : (e.b === cur ? e.a : null);
+            if (!other || layers.has(other)) continue;
+            layers.set(other, curOff.clone().multiplyScalar(Math.pow(0.45, depth + 1)));
+            queue.push([other, depth + 1]);
+          }
+        }
+        for (const [nd, prop] of layers) nd.offset.copy(drag.base.get(nd)).add(prop);
+        c.dirty = true;
+      }
+
+      if (c.dirty) {
+        for (const nd of c.nodeObjs) {
+          nd.sprite.position.copy(nd.home).add(nd.offset);
+          nd.pick.position.copy(nd.sprite.position);
+          nd.label.position.set(
+            nd.sprite.position.x,
+            nd.sprite.position.y + nd.size * 0.5 + 1.15,
+            nd.sprite.position.z
+          );
+        }
+        for (const e of c.edgeObjs) {
+          const arr = e.geo.attributes.position.array;
+          arr[0] = e.a.sprite.position.x; arr[1] = e.a.sprite.position.y; arr[2] = e.a.sprite.position.z;
+          arr[3] = e.b.sprite.position.x; arr[4] = e.b.sprite.position.y; arr[5] = e.b.sprite.position.z;
+          e.geo.attributes.position.needsUpdate = true;
+        }
+        c.dirty = false;
+      }
+    }
+  }
+
+  /* ============================================================
+     拾取
+     ============================================================ */
+
+  function updatePointer(ev) {
+    pointer.x = (ev.clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(ev.clientY / window.innerHeight) * 2 + 1;
+  }
+
+  function pick(ev) {
+    updatePointer(ev);
+    raycaster.setFromCamera(pointer, camera);
+    const visibleNodes = allNodes.filter((n) => n.cluster.visT > 0.5);
+    const nodeHits = raycaster.intersectObjects(visibleNodes.map((n) => n.pick), false);
+    if (nodeHits.length) return { node: nodeHits[0].object.userData.node, cluster: null };
+    const visibleClusters = clusters.filter((c) => c.visT > 0.5);
+    const clusterHits = raycaster.intersectObjects(visibleClusters.map((c) => c.clusterPick), false);
+    if (clusterHits.length) return { node: null, cluster: clusterHits[0].object.userData.cluster };
+    return { node: null, cluster: null };
+  }
+
+  let downPos = null;
+  let drag = null; // 拖拽单星状态：{node, startLocal, startWorld, plane, moved}
+
+  renderer.domElement.addEventListener('pointerdown', (ev) => {
+    downPos = { x: ev.clientX, y: ev.clientY };
+    const hit = pick(ev);
+    if (hit.node) {
+      // 按在星点上：准备拖拽，暂停相机操控与自转
+      const wp = hit.node.sprite.getWorldPosition(new THREE.Vector3());
+      camera.getWorldDirection(_v1);
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(_v1, wp);
+      drag = { node: hit.node, startLocal: hit.node.sprite.position.clone(), startOffset: hit.node.offset.clone(), startWorld: wp, plane, moved: false, base: null };
+      controls.enabled = false;
+      controls.autoRotate = false;
+    }
+  });
+
+  renderer.domElement.addEventListener('pointermove', (ev) => {
+    if (drag) {
+      if (!drag.moved && downPos &&
+          Math.hypot(ev.clientX - downPos.x, ev.clientY - downPos.y) > 5) {
+        drag.moved = true;
+        // 快照开拖时的全团偏移：本次拖拽在其基础上叠加（支持多次拖动）
+        drag.base = new Map(drag.node.cluster.nodeObjs.map((nd) => [nd, nd.offset.clone()]));
+        tip.hidden = true;
+        renderer.domElement.style.cursor = 'grabbing';
+      }
+      if (drag.moved) {
+        // 把指针投影到与相机平行的平面上，换算成星云局部坐标偏移
+        updatePointer(ev);
+        raycaster.setFromCamera(pointer, camera);
+        const wp = new THREE.Vector3();
+        if (raycaster.ray.intersectPlane(drag.plane, wp)) {
+          const c = drag.node.cluster;
+          const off = c.spin.worldToLocal(wp.clone()).sub(drag.startLocal);
+          const total = drag.startOffset.clone().add(off);
+          const max = c.spread * 1.4;
+          if (total.length() > max) total.setLength(max);
+          drag.node.offset.copy(total);
+          c.dirty = true;
+        }
+      }
+      return;
+    }
+
+    const hit = pick(ev);
+    hoveredNode = hit.node;
+    hoveredCluster = hit.node ? hit.node.cluster : hit.cluster;
+    if (hoveredNode) {
+      tip.innerHTML =
+        '<div class="n">' + escapeHtml(hoveredNode.name) + '</div>' +
+        '<div class="p">' + escapeHtml(hoveredNode.id) + '</div>';
+      tip.hidden = false;
+      const pad = 14;
+      const rect = tip.getBoundingClientRect();
+      let x = ev.clientX + pad, y = ev.clientY + pad;
+      if (x + rect.width > window.innerWidth - 8) x = ev.clientX - rect.width - pad;
+      if (y + rect.height > window.innerHeight - 8) y = ev.clientY - rect.height - pad;
+      tip.style.left = Math.max(8, x) + 'px';
+      tip.style.top = Math.max(8, y) + 'px';
+    } else {
+      tip.hidden = true;
+    }
+    renderer.domElement.style.cursor = hoveredNode ? 'pointer' : 'grab';
+  });
+
+  // 拖出画布松手也能正确收尾
+  window.addEventListener('pointerup', () => {
+    if (drag) {
+      drag = null;
+      controls.enabled = true;
+      controls.autoRotate = !reduceMotion && !activeCluster;
+      downPos = null;
+    }
+  });
+
+  renderer.domElement.addEventListener('pointerup', (ev) => {
+    const d = drag;
+    drag = null;
+    controls.enabled = true;
+    controls.autoRotate = !reduceMotion && !activeCluster;
+    if (!downPos) return;
+    const moved = Math.hypot(ev.clientX - downPos.x, ev.clientY - downPos.y);
+    downPos = null;
+
+    if (d && d.moved) {
+      // 拖拽结束：保持拖动后的形态，不触发点击
+      return;
+    }
+    if (moved > 6) return;
+
+    const hit = pick(ev);
+    if (hit.node) {
+      // 点节点：选中该星云（仅展示它）+ 波纹点亮关联节点
+      if (activeCluster !== hit.node.cluster) focusCluster(hit.node.cluster);
+      startWave(hit.node);
+    } else if (hit.cluster) {
+      if (activeCluster === hit.cluster) {
+        // 星云内非节点区域：清波纹、恢复该星云初始形态、镜头回正
+        clearWave();
+        resetShape(hit.cluster);
+        clusterView(hit.cluster);
+      } else {
+        focusCluster(hit.cluster);
+      }
+    } else {
+      // 点虚空：回到全局初始状态
+      if (activeCluster) goHome();
+      else clearWave();
+    }
+  });
+
+  /* ============================================================
+     HUD
+     ============================================================ */
+
+  function clusterView(c) {
+    camTween = {
+      fromPos: camera.position.clone(),
+      toPos: c.anchor.clone().add(new THREE.Vector3(0, c.spread * 0.5, c.spread * 1.6 + 12)),
+      fromTarget: controls.target.clone(),
+      toTarget: c.anchor.clone(),
+      start: performance.now(), dur: 900
+    };
+    controls.autoRotate = false;
+  }
+
+  function focusCluster(c) {
+    activeCluster = c;
+    clearWave();
+    clusterView(c);
+    syncScroll();
+  }
+
+  function goHome() {
+    activeCluster = null;
+    clearWave();
+    for (const c of clusters) resetShape(c);
+    camTween = {
+      fromPos: camera.position.clone(), toPos: HOME.pos.clone(),
+      fromTarget: controls.target.clone(), toTarget: HOME.target.clone(),
+      start: performance.now(), dur: 900
+    };
+    controls.autoRotate = !reduceMotion;
+    syncScroll();
+  }
+
+  /* ============================================================
+     Three.js 竹简卷轴 · 天书识海
+       参考图一：卷起的竹简（竹条弧面 / 绑绳 / 金字题签 / 流苏）
+       参考图二：展开的竹简（竖排墨字 / 雷纹编绳 / 左端卷边）
+       参考图三：铜杆白锋毛笔（点击卷轴时挥毫点简）
+     独立正交相机 + 独立渲染层，不干扰主星云场景
+     ============================================================ */
+
+  let scrollUI = null;
+
+  function createScrollUI(list, onPick, meta) {
+    const W = 560, H = 300, U = 100;   // 1 世界单位 = 100 px
+    const ROLL_X = -1.95;
+    const SLIP_X0 = -1.62;
+    const SLIP_W = .315;
+    const AREA_RIGHT = 2.55;          // 画布右侧留白（世界坐标，画布 x ∈ [-2.8, 2.8]）
+    const canvas = $('scrollCanvas');
+    const hitLayer = $('scrollHit');
+    const host = $('scroll3d');
+
+    let r;
+    try {
+      r = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
+    } catch (e) {
+      return null;
+    }
+    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
+    r.setSize(W, H, false);
+    r.setClearColor(0x000000, 0);
+
+    const sc = new THREE.Scene();
+    const cam = new THREE.OrthographicCamera(-W / (2 * U), W / (2 * U), H / (2 * U), -H / (2 * U), 0.1, 120);
+    cam.position.set(0, 4.5, 30);
+    cam.lookAt(0, 0, 0);
+    sc.add(new THREE.AmbientLight(0xffe9c4, 1.45));
+    const keyLight = new THREE.DirectionalLight(0xfff2d6, 2.3);
+    keyLight.position.set(-4, 5, 12); sc.add(keyLight);
+    const rimLight = new THREE.DirectionalLight(0x9fb4d0, .65);
+    rimLight.position.set(6, -3, 5); sc.add(rimLight);
+
+    const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+    const toTex = (c) => {
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = 4;
+      return t;
+    };
+    const FONT = '"STKaiti","KaiTi","Songti SC","Noto Serif SC",serif';
+    const smooth = (k) => { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); };
+
+    // 竹材：橙黄横向渐变 + 竖向纤维
+    function bamboo(w, h) {
+      const c = cv(w, h), x = c.getContext('2d');
+      const g = x.createLinearGradient(0, 0, w, 0);
+      g.addColorStop(0, '#7b5722');
+      g.addColorStop(.13, '#c99a45');
+      g.addColorStop(.4, '#e3b962');
+      g.addColorStop(.72, '#c5933f');
+      g.addColorStop(1, '#78531f');
+      x.fillStyle = g; x.fillRect(0, 0, w, h);
+      for (let i = 0; i < Math.round(w / 3); i++) {
+        const px = Math.random() * w;
+        x.strokeStyle = Math.random() < .5
+          ? 'rgba(84,52,16,' + (.03 + Math.random() * .07) + ')'
+          : 'rgba(255,229,166,' + (.03 + Math.random() * .07) + ')';
+        x.lineWidth = .6 + Math.random() * 1.1;
+        x.beginPath(); x.moveTo(px, 0);
+        x.bezierCurveTo(px + 2, h * .33, px - 2, h * .68, px, h); x.stroke();
+      }
+      return { c, x };
+    }
+
+    // 连续雷纹带（图二编绳处的装饰）
+    function meander(x, w, y, h, unit) {
+      x.save();
+      x.strokeStyle = 'rgba(58,34,12,.85)';
+      x.lineWidth = Math.max(1, h * .09);
+      for (let px = 0; px < w; px += unit) {
+        x.beginPath();
+        x.moveTo(px + 2, y + h - 3);
+        x.lineTo(px + 2, y + 3);
+        x.lineTo(px + unit - 4, y + 3);
+        x.lineTo(px + unit - 4, y + h - 6);
+        x.lineTo(px + 7, y + h - 6);
+        x.lineTo(px + 7, y + h * .42);
+        x.stroke();
+      }
+      x.restore();
+    }
+
+    // 卷轴圆柱：20 条竹片绕筒一周 + 中部绑绳
+    function rollTexture() {
+      const w = 512, h = 1024;
+      const { c, x } = bamboo(w, h);
+      for (let i = 1; i < 20; i++) {
+        const px = i * w / 20;
+        x.fillStyle = 'rgba(58,36,12,.55)'; x.fillRect(px - 1.5, 0, 3, h);
+        x.fillStyle = 'rgba(255,230,168,.2)'; x.fillRect(px + 2, 0, 2, h);
+      }
+      x.fillStyle = 'rgba(46,28,10,.8)';
+      x.fillRect(0, 0, w, 16); x.fillRect(0, h - 16, w, 16);
+      x.fillStyle = 'rgba(70,42,14,.55)';
+      x.fillRect(0, 58, w, 5); x.fillRect(0, h - 63, w, 5);
+      x.fillStyle = 'rgba(52,28,12,.94)'; x.fillRect(0, h * .49, w, 34);
+      x.strokeStyle = 'rgba(190,142,78,.5)'; x.lineWidth = 2;
+      for (let px = 0; px < w; px += 12) {
+        x.beginPath(); x.moveTo(px, h * .49 + 3); x.lineTo(px + 9, h * .49 + 31); x.stroke();
+      }
+      // 圆柱明暗：纹理两端（u=0/1）正对镜头最亮，中央（u=.5）是背面最暗
+      const shade = x.createLinearGradient(0, 0, w, 0);
+      shade.addColorStop(0, 'rgba(255,240,200,.2)');
+      shade.addColorStop(.25, 'rgba(0,0,0,.3)');
+      shade.addColorStop(.5, 'rgba(0,0,0,.5)');
+      shade.addColorStop(.75, 'rgba(0,0,0,.3)');
+      shade.addColorStop(1, 'rgba(255,240,200,.2)');
+      x.fillStyle = shade; x.fillRect(0, 0, w, h);
+      return toTex(c);
+    }
+
+    // 题签：暗色框 + 雷纹 + 竖排金字「天书识海」+ 卷数（星域数量）
+    function titleTexture(volumes) {
+      const w = 256, h = 512;
+      const c = cv(w, h), x = c.getContext('2d');
+      const g = x.createLinearGradient(0, 0, w, 0);
+      g.addColorStop(0, 'rgba(60,36,14,.78)');
+      g.addColorStop(.5, 'rgba(84,52,20,.97)');
+      g.addColorStop(1, 'rgba(60,36,14,.78)');
+      x.fillStyle = g; x.fillRect(14, 12, w - 28, h - 24);
+      meander(x, w, 18, 22, 26);
+      meander(x, w, h - 40, 22, 26);
+      x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.font = '52px ' + FONT;
+      x.shadowColor = 'rgba(255,206,110,.85)'; x.shadowBlur = 16;
+      ['天', '书', '识', '海'].forEach((ch, i) => {
+        x.fillStyle = 'rgba(255,227,160,.96)';
+        x.fillText(ch, w / 2, 74 + i * 88);
+      });
+      x.strokeStyle = 'rgba(226,182,104,.5)'; x.lineWidth = 1.5;
+      x.beginPath(); x.moveTo(50, 386); x.lineTo(w - 50, 386); x.stroke();
+      x.font = '44px ' + FONT;
+      x.shadowBlur = 8;
+      x.fillStyle = 'rgba(255,231,170,.97)';
+      x.fillText('凡 ' + volumes + ' 卷', w / 2, 428);
+      x.shadowBlur = 0;
+      return toTex(c);
+    }
+
+    // 展开态题头：可重绘的木牌，文字随当前选中 / 悬停的竹简变化
+    const BW = 768, BH = 128;
+    const bannerCanvas = cv(BW, BH);
+    const bx = bannerCanvas.getContext('2d');
+    const bannerTex = toTex(bannerCanvas);
+    function drawBanner(label) {
+      const x = bx;
+      x.clearRect(0, 0, BW, BH);
+      const g = x.createLinearGradient(0, 0, 0, BH);
+      g.addColorStop(0, 'rgba(48,29,11,.86)');
+      g.addColorStop(.5, 'rgba(84,52,20,.96)');
+      g.addColorStop(1, 'rgba(48,29,11,.86)');
+      const r = 14;
+      x.beginPath();
+      x.moveTo(r, 4); x.lineTo(BW - r, 4); x.quadraticCurveTo(BW - 4, 4, BW - 4, r);
+      x.lineTo(BW - 4, BH - r); x.quadraticCurveTo(BW - 4, BH - 4, BW - r, BH - 4);
+      x.lineTo(r, BH - 4); x.quadraticCurveTo(4, BH - 4, 4, BH - r);
+      x.lineTo(4, r); x.quadraticCurveTo(4, 4, r, 4); x.closePath();
+      x.fillStyle = g; x.fill();
+      x.strokeStyle = 'rgba(226,182,104,.65)'; x.lineWidth = 3; x.stroke();
+      x.strokeStyle = 'rgba(226,182,104,.4)'; x.lineWidth = 2;
+      x.beginPath();
+      x.moveTo(24, 20); x.lineTo(BW - 24, 20);
+      x.moveTo(24, BH - 20); x.lineTo(BW - 24, BH - 20); x.stroke();
+      x.textAlign = 'center'; x.textBaseline = 'middle';
+      // 星域名过长时自动缩字号，避免溢出木牌
+      const fs = Math.min(50, Math.floor((BW - 96) / Array.from(label).length));
+      x.font = fs + 'px ' + FONT;
+      x.shadowColor = 'rgba(255,206,110,.8)'; x.shadowBlur = 14;
+      x.fillStyle = 'rgba(255,231,170,.97)';
+      x.fillText(label, BW / 2, BH / 2 + 2);
+      x.shadowBlur = 0;
+      bannerTex.needsUpdate = true;
+    }
+
+    // 单片竹简：竹材 + 雷纹带 + 编绳孔 + 竖排墨字
+    function slipTexture(entry) {
+      const w = 128, h = 768;
+      const { c, x } = bamboo(w, h);
+      x.fillStyle = 'rgba(52,32,12,.86)';
+      x.fillRect(0, 26, w, 54); x.fillRect(0, h - 92, w, 66);
+      x.strokeStyle = 'rgba(226,182,104,.75)'; x.lineWidth = 2;
+      meander(x, w, 30, 44, 32);
+      meander(x, w, h - 88, 58, 32);
+      for (const py of [h - 190, h - 108]) {
+        x.fillStyle = 'rgba(38,22,8,.9)';
+        x.beginPath(); x.arc(w / 2, py, 6, 0, Math.PI * 2); x.fill();
+        x.strokeStyle = 'rgba(255,226,160,.35)'; x.lineWidth = 1.5; x.stroke();
+      }
+      x.textAlign = 'center'; x.textBaseline = 'middle';
+      const chars = Array.from(entry.t);
+      const fs = chars.length > 5 ? 46 : 58;
+      x.font = fs + 'px ' + FONT;
+      const top = 178;
+      chars.forEach((ch, i) => {
+        x.fillStyle = entry.decor ? 'rgba(74,46,18,.62)' : 'rgba(38,22,8,.92)';
+        x.fillText(ch, w / 2, top + i * (fs + 16));
+      });
+      if (entry.s) {
+        x.font = '30px ' + FONT;
+        x.fillStyle = 'rgba(78,48,18,.72)';
+        Array.from(entry.s).forEach((ch, i) =>
+          x.fillText(ch, w / 2, top + chars.length * (fs + 16) + 18 + i * 36));
+      }
+      return toTex(c);
+    }
+
+    /* ---------- 卷起的竹简 ---------- */
+    const roll = new THREE.Group();
+    roll.position.set(ROLL_X, 0, 0);
+    sc.add(roll);
+
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(.44, .44, 2.3, 48, 1, false),
+      new THREE.MeshStandardMaterial({ map: rollTexture(), roughness: .78, metalness: .04 })
+    );
+    roll.add(body);
+
+    // 贴着弧面的题签扇区（theta -0.72 ~ 0.72 正对相机）
+    const titleMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(.49, .49, 1.2, 32, 1, true, -.72, 1.44),
+      new THREE.MeshBasicMaterial({ map: titleTexture(meta.volumes), transparent: true, side: THREE.DoubleSide, depthWrite: false })
+    );
+    roll.add(titleMesh);
+
+    const cordMat = new THREE.MeshStandardMaterial({ color: 0x3a2410, roughness: .9 });
+    for (const y of [0]) {
+      const t = new THREE.Mesh(new THREE.TorusGeometry(.448, .022, 8, 48), cordMat);
+      t.rotation.x = Math.PI / 2; t.position.y = y; roll.add(t);
+    }
+    for (const y of [1.15, -1.15]) {
+      const cap = new THREE.Mesh(
+        new THREE.TorusGeometry(.41, .028, 8, 40),
+        new THREE.MeshStandardMaterial({ color: 0x6a451c, roughness: .85 })
+      );
+      cap.rotation.x = Math.PI / 2; cap.position.y = y; roll.add(cap);
+    }
+    for (let i = 0; i < 7; i++) {
+      const s = new THREE.Mesh(new THREE.CylinderGeometry(.004, .001, .55 + Math.random() * .2, 4), cordMat);
+      s.position.set(-.46 - i * .018, -.34, .12 + i * .01);
+      s.rotation.z = -.25 - i * .05;
+      roll.add(s);
+    }
+    const rollHit = new THREE.Mesh(
+      new THREE.CylinderGeometry(.52, .52, 2.45, 12),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    );
+    roll.add(rollHit);
+
+    /* ---------- 展开的竹简：每片真实星域对应一片，不足 9 片用 DECOR 补装饰 ---------- */
+    // 装饰题名：顺序取用、不循环回头；词表用尽时以编号兜底，保证同屏不重名
+    const DECOR = [
+      '星垂平野', '墨海拾遗', '卷帙流光', '万象归藏', '以文观天',
+      '斗转星移', '云篆天章', '星槎问津', '汗青余韵', '河汉流辉'
+    ];
+    const N = Math.max(9, 2 + list.length);
+    // 「全部星域」总览片已去掉：全景还原改由再次点击卷轴收卷时触发
+    const entries = list.map((v, i) => ({ t: v.vaultName, s: v.mdCount + ' 篇', pick: i }));
+    let d = 0;
+    while (entries.length < N) {
+      entries.push({ t: DECOR[d] || ('逸简·' + (d + 1)), s: '', pick: null, decor: true });
+      d++;
+    }
+
+    // 片多时自动收窄间距，保证整排始终落在画布内；片少时保持原有密度
+    const gap = N > 1 ? Math.min(.355, (AREA_RIGHT - SLIP_X0 - SLIP_W / 2) / (N - 1)) : 0;
+    const span = (N - 1) * gap;
+    const stagger = .35 / Math.max(1, N - 1);   // 展卷错峰按片数归一化，避免末片展不开
+    const cordSpan = span + .32;
+    const cordX0 = SLIP_X0 - .16;
+    // 命中层只覆盖实际竹简宽度，避免收窄后仍吞掉主星云的鼠标事件
+    host.style.setProperty('--hit-open-w',
+      Math.max(118, Math.round((SLIP_X0 + span + SLIP_W / 2 + W / (2 * U)) * U - 24 + 16)) + 'px');
+
+    const slipGeo = new THREE.BoxGeometry(SLIP_W, 2.16, .05);
+    const slips = [];
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const m = new THREE.Mesh(slipGeo, new THREE.MeshStandardMaterial({
+        map: slipTexture(e), transparent: true, opacity: 0,
+        roughness: .8, metalness: .03, depthWrite: false,
+        emissive: new THREE.Color(0x6a4712), emissiveIntensity: 0
+      }));
+      m.position.set(ROLL_X, 0, .12);
+      m.rotation.y = Math.PI / 2;
+      m.userData = {
+        i, pick: e.pick,
+        targetX: SLIP_X0 + i * gap,
+        targetZ: .12 + Math.sin(i * .8) * .035
+      };
+      sc.add(m);
+      slips.push(m);
+    }
+
+    // 两道编绳 + 结点
+    const cords = new THREE.Group();
+    const cordMat2 = new THREE.MeshStandardMaterial({
+      color: 0x5a2f18, roughness: .85, transparent: true, opacity: 0,
+      depthWrite: false, depthTest: false
+    });
+    const cordLines = [], cordKnots = [];
+    for (const y of [-.55, -.78]) {
+      const line = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, cordSpan, 6), cordMat2);
+      line.rotation.z = Math.PI / 2;
+      line.position.set(cordX0 + cordSpan / 2, y, .19);
+      line.renderOrder = 3;
+      cords.add(line);
+      cordLines.push(line);
+      for (let i = 0; i < N; i++) {
+        const knot = new THREE.Mesh(new THREE.SphereGeometry(.026, 8, 6), cordMat2);
+        knot.position.set(SLIP_X0 + i * gap, y, .2);
+        knot.renderOrder = 3;
+        cords.add(knot);
+        cordKnots.push({ mesh: knot, i });
+      }
+    }
+    sc.add(cords);
+
+    // 展开后浮于竹简上沿的册数题头（文件节点数）
+    const banner = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.45, .4),
+      new THREE.MeshBasicMaterial({
+        map: bannerTex, transparent: true, opacity: 0, depthWrite: false
+      })
+    );
+    banner.position.set(SLIP_X0 + span / 2, 1.28, .28);
+    banner.renderOrder = 4;
+    sc.add(banner);
+
+    // 当前星域的竹简：背后一圈金色柔光
+    const activeGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: makeGlowTexture('rgba(255,214,130,.9)', 'rgba(216,160,60,.35)'),
+      transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    activeGlow.scale.set(.66, 2.6, 1);
+    sc.add(activeGlow);
+
+    /* ---------- 毛笔：铜杆 + 白锋 ---------- */
+    const brush = new THREE.Group();
+    const profile = [
+      [0, 0], [.03, .05], [.075, .16], [.112, .31], [.132, .46], [.118, .58]
+    ].map(([a, b]) => new THREE.Vector2(a, b));
+    brush.add(new THREE.Mesh(
+      new THREE.LatheGeometry(profile, 20),
+      new THREE.MeshStandardMaterial({ color: 0xf3e9d2, roughness: .88 })
+    ));
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(.072, .088, 1.6, 18),
+      new THREE.MeshStandardMaterial({ color: 0x8c4a28, roughness: .4, metalness: .45 })
+    );
+    shaft.position.y = .58 + .8; brush.add(shaft);
+    const brass = new THREE.MeshStandardMaterial({ color: 0xc9a45c, roughness: .3, metalness: .85 });
+    for (const y of [.61, .78, 2.14]) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(y > 2 ? .078 : (y < .7 ? .115 : .085), .016, 8, 24), brass
+      );
+      ring.rotation.x = Math.PI / 2; ring.position.y = y; brush.add(ring);
+    }
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(.075, 12, 10), brass);
+    cap.position.y = 2.22; brush.add(cap);
+    brush.rotation.z = -.58;
+    sc.add(brush);
+    const BRUSH_IDLE = new THREE.Vector3(2.02, -.34, 1.4);
+    const brushPre = new THREE.Vector3(ROLL_X + .08, 1.0, 1.4);
+    const brushTap = new THREE.Vector3(ROLL_X + .06, .72, 1.4);
+    brush.position.copy(BRUSH_IDLE);
+    brush.visible = false;   // 默认隐藏：仅点击卷轴 / 竹简时显现
+
+    // 笔尖触简时的金色墨晕
+    const ripple = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: makeGlowTexture('rgba(255,228,164,.95)', 'rgba(216,185,120,.4)'),
+      transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    ripple.position.set(ROLL_X + .06, .72, 1.7);
+    sc.add(ripple);
+
+    /* ---------- 状态机 ---------- */
+    let open = false, target = 0, prog = 0, pending = null;
+    let brushT = -1, rippleT = -1;
+    let activeIdx = -1, hoverIdx = -1;
+    let brushAction = null;
+    let currentLabel = '';
+
+    // 题头文字：星域名 + 该星域册数；全景（未选中任何竹简）显示总册数
+    function bannerLabel(idx) {
+      const e = entries[idx] || {};
+      if (e.pick === null) return bannerLabel(activeIdx);   // 装饰竹简回退到当前选中
+      if (e.pick === undefined) return '全部星域 · 凡 ' + meta.books + ' 册';
+      return e.t + ' · 凡 ' + list[e.pick].mdCount + ' 册';
+    }
+
+    // tapX：笔尖落点；onTap：笔尖触简时执行；toggleOpen：是否连带展卷 / 卷回
+    function triggerBrush(tapX, onTap, toggleOpen) {
+      if (brushT >= 0) return;   // 挥毫过程中忽略重复点击
+      brushT = 0;
+      brush.visible = true;
+      const tx = tapX === undefined ? ROLL_X + .06 : tapX;
+      brushPre.set(tx + .02, 1.0, 1.4);
+      brushTap.set(tx, .72, 1.4);
+      ripple.position.x = tx;
+      brushAction = onTap || null;
+      pending = toggleOpen ? !open : null;   // 笔尖落下后才开始展卷 / 卷回
+    }
+
+    function update(dt) {
+      if (brushT >= 0) {
+        brushT += dt;
+        const t = brushT;
+        if (t < .42) {
+          brush.position.lerpVectors(BRUSH_IDLE, brushPre, smooth(t / .42));
+          brush.rotation.z = -.58 + .12 * smooth(t / .42);
+        } else if (t < .52) {
+          brush.position.lerpVectors(brushPre, brushTap, smooth((t - .42) / .1));
+          if (rippleT < 0) rippleT = 0;
+        } else if (t < .76) {
+          brush.position.lerpVectors(brushTap, brushPre, smooth((t - .52) / .24));
+          if (pending !== null) {
+            const closing = !pending;
+            open = pending; target = open ? 1 : 0; pending = null;
+            if (closing) onPick(-1);   // 卷回收起时还原星云全景（相机、星云形态、自动旋转）
+          }
+          if (brushAction) { const fn = brushAction; brushAction = null; fn(); }
+        } else if (t < 1.4) {
+          brush.position.lerpVectors(brushPre, BRUSH_IDLE, smooth((t - .76) / .64));
+          brush.rotation.z = -.46 - .12 * smooth((t - .76) / .64);
+        } else {
+          brushT = -1;
+          brush.visible = false;   // 点简完成后再次隐藏
+          brush.position.copy(BRUSH_IDLE);
+          brush.rotation.z = -.58;
+        }
+      } else {
+        brush.visible = false;
+      }
+
+      if (rippleT >= 0) {
+        rippleT += dt;
+        const k = clamp(rippleT / .85, 0, 1);
+        const s = .3 + k * 1.35;
+        ripple.scale.set(s, s, 1);
+        ripple.material.opacity = .9 * (1 - k);
+        if (k >= 1) rippleT = -1;
+      }
+
+      // 缓缓展卷：约 2.1 秒，逐片错峰展开
+      if (prog < target) prog = Math.min(target, prog + dt / 2.1);
+      else if (prog > target) prog = Math.max(target, prog - dt / 2.1);
+      host.classList.toggle('open', prog > .45);
+
+      roll.position.x = ROLL_X - .28 * prog;
+      // 展开后压成左端卷边（仍留一点厚度），不再是一整个圆筒
+      roll.scale.set(1 - .45 * prog, 1 - .06 * prog, 1 - .28 * prog);
+      roll.rotation.y = -2.3 * prog;
+      titleMesh.material.opacity = 1 - smooth(prog * 1.5);
+
+      for (const m of slips) {
+        const u = m.userData;
+        const e = smooth((prog - u.i * stagger) / .5);
+        m.position.x = ROLL_X + (u.targetX - ROLL_X) * e;
+        m.position.z = u.targetZ * e + .1 * (1 - e);
+        m.rotation.y = (Math.PI / 2) * (1 - e);
+        m.scale.set(1, .94 + .06 * e, 1);
+        m.material.opacity = e;
+        const isActive = u.i === activeIdx && u.pick !== null;
+        const isHover = u.i === hoverIdx && u.pick !== null;
+        const want = isActive ? 1.05 : (isHover ? .5 : .04);
+        m.material.emissiveIntensity += (want - m.material.emissiveIntensity) * Math.min(1, dt * 8);
+        m.material.color.setHex(isActive ? 0xffe7ae : 0xffffff);
+        m.position.z += isActive ? .06 * e : 0;
+      }
+      const activeSlip = slips[activeIdx];
+      activeGlow.visible = prog > .5 && !!activeSlip;
+      if (activeGlow.visible) {
+        activeGlow.position.set(activeSlip.position.x, 0, .02);
+        activeGlow.material.opacity = .6 * activeSlip.material.opacity;
+      }
+      cordMat2.opacity = smooth(prog * 1.2);
+      cords.visible = prog > .02;
+      // 鼠标悬停可点竹简时预览其题头，移开后回到当前选中项
+      const hov = hoverIdx >= 0 && slips[hoverIdx] && slips[hoverIdx].userData.pick !== null ? hoverIdx : -1;
+      const label = bannerLabel(hov >= 0 ? hov : activeIdx);
+      if (label !== currentLabel) { currentLabel = label; drawBanner(label); }
+      banner.material.opacity = smooth((prog - .5) / .4);
+      banner.visible = banner.material.opacity > .01;
+      // 编绳跟着已展开的竹片逐段长出，不会先于竹片伸到空中
+      const cordLen = Math.max(.01, cordSpan * smooth(prog));
+      const cordRight = cordX0 + cordLen;
+      for (const line of cordLines) {
+        line.scale.y = cordLen / cordSpan;
+        line.position.x = cordX0 + cordLen / 2;
+      }
+      for (const k of cordKnots) k.mesh.visible = SLIP_X0 + k.i * gap <= cordRight;
+      r.render(sc, cam);
+    }
+
+    /* ---------- 拾取（事件只落在透明命中层，空白可穿透到主星云） ---------- */
+    const ray = new THREE.Raycaster();
+    function hit(ev) {
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      if (nx < -1 || nx > 1 || ny < -1 || ny > 1) return null;
+      ray.setFromCamera({ x: nx, y: ny }, cam);
+      const objs = [rollHit];
+      if (prog > .5) {
+        for (const m of slips) {
+          if (m.material.opacity > .6 && m.userData.pick !== null) objs.push(m);
+        }
+      }
+      const r0 = ray.intersectObjects(objs, false);
+      return r0.length ? r0[0].object : null;
+    }
+
+    let down = null;
+    hitLayer.addEventListener('pointermove', (ev) => {
+      const o = hit(ev);
+      hoverIdx = o && o.userData.i !== undefined ? o.userData.i : -1;
+      hitLayer.style.cursor = o ? 'pointer' : 'default';
+    });
+    hitLayer.addEventListener('pointerleave', () => { hoverIdx = -1; });
+    hitLayer.addEventListener('pointerdown', (ev) => { down = { x: ev.clientX, y: ev.clientY }; });
+    hitLayer.addEventListener('pointerup', (ev) => {
+      if (!down || Math.hypot(ev.clientX - down.x, ev.clientY - down.y) > 6) { down = null; return; }
+      down = null;
+      const o = hit(ev);
+      if (!o) return;
+      if (o === rollHit) triggerBrush(undefined, null, true);
+      else if (o.userData.pick !== null && o.userData.pick !== undefined) {
+        const pick = o.userData.pick;
+        triggerBrush(o.userData.targetX, () => onPick(pick), false);
+      }
+    });
+
+    // 截图 / 演示入口：URL 带 #scrollopen 时直接呈现展卷终态
+    if (location.hash === '#scrollopen') { open = true; target = 1; prog = 1; }
+
+    let last = performance.now();
+    function loop(now) {
+      requestAnimationFrame(loop);
+      const dt = Math.min((now - last) / 1000, .05);
+      last = now;
+      update(reduceMotion && brushT < 0 ? 0 : dt);
+    }
+    requestAnimationFrame(loop);
+
+    return {
+      setActive(i) { activeIdx = i; }   // -1 = 全景，无高亮竹简
+    };
+  }
+
+  /* ============================================================
+     星域导航装配（3D 为主，WebGL 不可用时退回 DOM 竹简）
+     ============================================================ */
+
+  function buildScroll(list) {
+    const meta = { volumes: list.length, books: allNodes.length };
+    scrollUI = createScrollUI(list, (i) => {
+      if (i < 0) goHome();
+      else focusCluster(clusters[i]);
+    }, meta);
+    if (!scrollUI) {
+      $('scroll3d').style.display = 'none';
+      $('scroll').style.display = 'flex';
+      buildScrollFallback(list);
+    }
+    syncScroll();
+  }
+
+  function buildScrollFallback(list) {
+    const body = $('scrollBody');
+    $('scrollCount').textContent = '凡 ' + list.length + ' 卷 · ' + allNodes.length + ' 册';
+    body.innerHTML =
+      list.map((v, i) => '<div class="slip" data-i="' + i + '">' + escapeHtml(v.vaultName) + '</div>').join('');
+    body.addEventListener('click', (ev) => {
+      const slip = ev.target.closest('.slip');
+      if (slip) focusCluster(clusters[Number(slip.dataset.i)]);
+    });
+    $('scrollToggle').addEventListener('click', () => {
+      const expanded = $('scroll').classList.toggle('expanded');
+      if (!expanded) goHome();   // 收卷时还原星云全景，与 3D 版一致
+    });
+  }
+
+  function syncScroll() {
+    const cur = activeCluster ? clusters.indexOf(activeCluster) : -1;
+    if (scrollUI) scrollUI.setActive(cur);
+    document.querySelectorAll('#scrollBody .slip').forEach((s) => {
+      s.classList.toggle('on', Number(s.dataset.i) === cur);
+    });
+  }
+
+  /* ============================================================
+     数据加载 + 主循环
+     ============================================================ */
+
+  async function boot() {
+    let list;
+    try {
+      const res = await fetch('vault-list.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      list = await res.json();
+    } catch (e) {
+      showAlert(
+        '读取 <code>vault-list.json</code> 失败（' + escapeHtml(e.message) + '）。<br>' +
+        '请先执行 <code>node build.js</code>；' +
+        '若是直接双击打开本文件，请改用本地服务：<code>npx serve</code> 或 <code>python -m http.server</code>。'
+      );
+      return;
+    }
+
+    if (!Array.isArray(list) || list.length === 0) {
+      showAlert('未发现任何星域。请在根目录下放置含 <code>.md</code> 笔记的文件夹后执行 <code>node build.js</code>。');
+      return;
+    }
+
+    const R = list.length > 1 ? 30 : 0;
+    let graphs;
+    try {
+      graphs = await Promise.all(list.map(async (v) => {
+        const res = await fetch(encodeURI(v.graphUrl), { cache: 'no-store' });
+        if (!res.ok) throw new Error(v.graphUrl + ' HTTP ' + res.status);
+        return res.json();
+      }));
+    } catch (e) {
+      showAlert('图谱加载失败（' + escapeHtml(e.message) + '）。请执行 <code>node build.js</code> 后重试。');
+      return;
+    }
+
+    list.forEach((v, i) => {
+      const ang = (i / list.length) * Math.PI * 2;
+      const anchor = new THREE.Vector3(Math.cos(ang) * R, rand(-3, 3), Math.sin(ang) * R);
+      const hue = VAULT_HUES[i % VAULT_HUES.length];
+      try {
+        buildCluster(v, graphs[i], hue, anchor);
+      } catch (e) {
+        console.warn('星云构建失败', v.vaultName, e);
+      }
+    });
+
+    buildScroll(list);
+
+    // 调试入口：URL 带 #wave 时自动聚焦最高连接度节点所在的星云并触发蔓延（供截图/演示验证）
+    if (location.hash === '#wave') {
+      setTimeout(() => {
+        const root = allNodes.reduce((a, b) => (b.deg > a.deg ? b : a));
+        focusCluster(root.cluster);
+        startWave(root);
+      }, 800);
+    }
+
+    function stepTween() {
+      if (!camTween) return;
+      const k = clamp((performance.now() - camTween.start) / camTween.dur, 0, 1);
+      const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      camera.position.lerpVectors(camTween.fromPos, camTween.toPos, e);
+      controls.target.lerpVectors(camTween.fromTarget, camTween.toTarget, e);
+      if (k >= 1) camTween = null;
+    }
+
+    let last = performance.now();
+    function loop(nowMs) {
+      requestAnimationFrame(loop);
+      const dt = Math.min((nowMs - last) / 1000, 0.05);
+      last = nowMs;
+      const step = reduceMotion ? 0 : dt;
+      simEpoch += step;
+      stepTween();
+      controls.update();
+      bg.update(step);
+      applyDrag(step);
+      applyClusterVisual(step);
+      applyNodeVisual(step);
+      applyEdgeFlow(step);
+      updateWave();
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(loop);
+  }
+
+  boot();
+  </script>
+</body>
+</html>

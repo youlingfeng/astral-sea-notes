@@ -1,0 +1,18 @@
+{
+  "name": "astral-sea-notes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Obsidian Vault 关系图谱增量构建器",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node build.js",
+    "build:full": "node build.js --full"
+  },
+  "dependencies": {
+    "globby": "^14.0.2",
+    "gray-matter": "^4.0.3"
+  }
+}

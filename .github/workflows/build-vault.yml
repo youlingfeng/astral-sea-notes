@@ -1,0 +1,69 @@
+name: 自动生成知识库图谱
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.md'
+      - 'build.js'
+      - 'package.json'
+  workflow_dispatch:
+
+concurrency:
+  group: graph-build
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: install
+        run: npm ci
+
+      - name: run incremental build
+        run: node build.js
+
+      - name: commit generated graph
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 只提交生成物；用 nullglob 避免无匹配时 pathspec 报错
+          shopt -s nullglob globstar
+          candidates=(vault-list.json build-cache.json **/graph.json)
+          files=()
+          for f in "${candidates[@]}"; do
+            case "$f" in node_modules/*) continue ;; esac
+            [ -e "$f" ] && files+=("$f")
+          done
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "nothing to commit"
+            exit 0
+          fi
+
+          git add -- "${files[@]}"
+          if git diff --cached --quiet; then
+            echo "no change, skip commit"
+            exit 0
+          fi
+          git commit -m "auto: update graph [skip ci]"
+          git push || (git pull --rebase --autostash && git push)

@@ -1,0 +1,54 @@
+{
+  "nodes": [
+    {
+      "id": "开发知识/AI/AI祖训.md",
+      "name": "AI祖训"
+    },
+    {
+      "id": "开发知识/AI/skills/skills草稿.md",
+      "name": "skills草稿"
+    },
+    {
+      "id": "开发知识/escape/3x-ui 安装与使用.md",
+      "name": "3x-ui 安装与使用"
+    },
+    {
+      "id": "开发知识/escape/oracle云服务器申请.md",
+      "name": "oracle云服务器申请"
+    },
+    {
+      "id": "开发知识/escape/v2rayN 使用教程.md",
+      "name": "v2rayN 使用教程"
+    },
+    {
+      "id": "开发知识/templete/blank templete.md",
+      "name": "blank templete"
+    }
+  ],
+  "links": [
+    {
+      "source": "开发知识/escape/3x-ui 安装与使用.md",
+      "target": "开发知识/escape/oracle云服务器申请.md"
+    },
+    {
+      "source": "开发知识/escape/3x-ui 安装与使用.md",
+      "target": "开发知识/escape/v2rayN 使用教程.md"
+    },
+    {
+      "source": "开发知识/escape/oracle云服务器申请.md",
+      "target": "开发知识/escape/3x-ui 安装与使用.md"
+    },
+    {
+      "source": "开发知识/escape/oracle云服务器申请.md",
+      "target": "开发知识/escape/v2rayN 使用教程.md"
+    },
+    {
+      "source": "开发知识/escape/v2rayN 使用教程.md",
+      "target": "开发知识/escape/3x-ui 安装与使用.md"
+    },
+    {
+      "source": "开发知识/escape/v2rayN 使用教程.md",
+      "target": "开发知识/escape/oracle云服务器申请.md"
+    }
+  ]
+}
