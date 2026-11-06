@@ -243,9 +243,198 @@
     padding: 4px;
   }
 
+  /* ---------- 展卷读文 · 宣纸浮层 ---------- */
+  #readerMask {
+    position: fixed; inset: 0; z-index: 8;
+    background: rgba(6, 5, 4, .58);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none;
+    transition: opacity 1.1s ease;
+  }
+  #readerMask.on { opacity: 1; pointer-events: auto; }
+
+  #reader {
+    position: fixed; left: 50%; top: 50%; z-index: 9;
+    display: flex; flex-direction: column;
+    width: min(880px, calc(100vw - 72px));
+    height: min(660px, calc(100vh - 96px));
+    transform: translate(-50%, -50%) scale(.9);
+    opacity: 0; filter: blur(9px); pointer-events: none;
+    border-radius: 5px;
+    background:
+      radial-gradient(ellipse at 28% 16%, rgba(255, 253, 243, .95), transparent 62%),
+      radial-gradient(ellipse at 80% 84%, rgba(223, 202, 163, .45), transparent 62%),
+      #f2e9d5;
+    box-shadow: 0 0 0 1px rgba(176, 140, 78, .5), 0 24px 80px rgba(0, 0, 0, .68);
+    overflow: hidden;
+    transition: opacity .9s ease, transform 1.1s cubic-bezier(.2, .8, .2, 1), filter 1.1s ease;
+  }
+  #reader.on {
+    opacity: 1; filter: blur(0); pointer-events: auto;
+    /* 浮层本体保持绝对静止；呼吸改由外缘光晕承担，避免文字随位移/缩放抖动发虚 */
+    transform: translate(-50%, -50%) scale(1);
+  }
+  /* 合卷：浮层淡出，交给 fxCanvas 的星光粒子接管 */
+  #reader.on.shattering {
+    opacity: 0; pointer-events: none;
+    transition: opacity .55s ease;
+  }
+  /* 可拖拽缩放：四边 + 四角手柄 */
+  #reader .rs { position: absolute; z-index: 6; }
+  #reader .rs-n { top: 0; left: 16px; right: 16px; height: 7px; cursor: ns-resize; }
+  #reader .rs-s { bottom: 0; left: 16px; right: 16px; height: 7px; cursor: ns-resize; }
+  #reader .rs-w { left: 0; top: 16px; bottom: 16px; width: 7px; cursor: ew-resize; }
+  #reader .rs-e { right: 0; top: 16px; bottom: 16px; width: 7px; cursor: ew-resize; }
+  #reader .rs-nw { left: 0; top: 0; width: 16px; height: 16px; cursor: nwse-resize; }
+  #reader .rs-ne { right: 0; top: 0; width: 16px; height: 16px; cursor: nesw-resize; }
+  #reader .rs-sw { left: 0; bottom: 0; width: 16px; height: 16px; cursor: nesw-resize; }
+  #reader .rs-se { right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; }
+  #reader .rs-se::after {
+    content: ''; position: absolute; right: 3px; bottom: 3px; width: 9px; height: 9px;
+    border-right: 2px solid rgba(160, 118, 56, .75);
+    border-bottom: 2px solid rgba(160, 118, 56, .75);
+  }
+
+  .paper-grain {
+    position: absolute; inset: 0; pointer-events: none; opacity: .13;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+    background-size: 160px 160px;
+  }
+  .paper-edge {
+    position: absolute; inset: 12px; pointer-events: none;
+    border: 1px solid rgba(184, 148, 84, .28);
+    border-radius: 2px;
+  }
+  #reader .ra { position: absolute; pointer-events: none; }
+  .ra-tl { left: 0; top: 0; width: 250px; height: 152px; }
+  .ra-tr { right: 0; top: 0; width: 186px; height: 214px; }
+  .ra-bl { left: 0; bottom: 0; width: 186px; height: 214px; }
+  .ra-br { right: 0; bottom: 0; width: 250px; height: 152px; }
+
+  #readerHead {
+    position: relative; z-index: 2;
+    display: flex; align-items: baseline; gap: 14px;
+    /* 左侧留出 152px 避开朱砂红日，标题落在宣纸中部留白区 */
+    padding: 30px 48px 16px 152px;
+    border-bottom: 1px solid rgba(176, 140, 78, .3);
+  }
+  #readerTitle {
+    font-family: "STKaiti", "KaiTi", "Songti SC", "Noto Serif SC", serif;
+    font-size: 26px; letter-spacing: .12em; color: #5b3b1c;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, .5);
+  }
+  #readerPath { font-size: 11px; color: #9c865f; letter-spacing: .04em; word-break: break-all; }
+  #readerClose {
+    margin-left: auto; flex: none;
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 1px solid rgba(160, 118, 56, .6);
+    background: rgba(255, 250, 235, .7); color: #8a5f2c;
+    font: 20px/1 system-ui, sans-serif; cursor: pointer;
+    transition: background .25s, transform .25s, color .25s;
+  }
+  #readerClose:hover { background: #b9381f; border-color: #b9381f; color: #fff5de; transform: rotate(90deg); }
+
+  #readerBody {
+    position: relative; z-index: 2;
+    height: calc(100% - 86px); overflow: auto;
+    padding: 22px 52px 48px;
+    color: #4b3924; font-size: 14.5px; line-height: 2;
+    font-family: "Songti SC", "Noto Serif SC", Georgia, "Microsoft YaHei", serif;
+  }
+  #readerBody::-webkit-scrollbar { width: 8px; }
+  #readerBody::-webkit-scrollbar-thumb { background: rgba(176, 140, 78, .35); border-radius: 4px; }
+  #readerBody h1, #readerBody h2, #readerBody h3 {
+    font-family: "STKaiti", "KaiTi", "Songti SC", serif;
+    color: #6d3f1c; letter-spacing: .08em; margin: 1.1em 0 .5em;
+  }
+  #readerBody h1 { font-size: 25px; }
+  #readerBody h2 { font-size: 21px; border-bottom: 1px solid rgba(176, 140, 78, .3); padding-bottom: 6px; }
+  #readerBody h3 { font-size: 17px; }
+  #readerBody p { margin: .55em 0; }
+  #readerBody ul, #readerBody ol { padding-left: 1.7em; margin: .5em 0; }
+  #readerBody li { margin: .22em 0; }
+  #readerBody blockquote {
+    margin: .9em 0; padding: 6px 16px;
+    border-left: 3px solid rgba(185, 57, 31, .6);
+    background: rgba(224, 205, 168, .3); color: #6b543a;
+  }
+  /* Obsidian 的 > [!note] / > [!important] 标注块 */
+  #readerBody .callout {
+    margin: .95em 0; padding: 9px 16px 11px;
+    border-left: 3px solid #a9762f;
+    border-radius: 0 4px 4px 0;
+    background: rgba(214, 185, 133, .22); color: #5c472c;
+  }
+  #readerBody .callout-title {
+    font-weight: 600; letter-spacing: .08em; color: #8a5a1c;
+    margin: 0 0 .28em; font-size: 14px;
+  }
+  #readerBody .callout-body p { margin: .25em 0; }
+  #readerBody .callout-body ul { margin: .3em 0; padding-left: 1.5em; }
+  #readerBody .callout-body li { margin: .18em 0; }
+  #readerBody mark.hl {
+    background: rgba(226, 182, 82, .45); color: #6a3d14;
+    padding: 0 3px; border-radius: 2px;
+  }
+  #readerBody .callout[data-kind="important"],
+  #readerBody .callout[data-kind="danger"],
+  #readerBody .callout[data-kind="warning"],
+  #readerBody .callout[data-kind="caution"] {
+    border-left-color: #b9381f; background: rgba(196, 106, 71, .16);
+  }
+  #readerBody .callout[data-kind="important"] .callout-title,
+  #readerBody .callout[data-kind="danger"] .callout-title,
+  #readerBody .callout[data-kind="warning"] .callout-title,
+  #readerBody .callout[data-kind="caution"] .callout-title { color: #9b341b; }
+  #readerBody .callout[data-kind="tip"],
+  #readerBody .callout[data-kind="success"],
+  #readerBody .callout[data-kind="example"] {
+    border-left-color: #6b7c3a; background: rgba(150, 168, 106, .18);
+  }
+  #readerBody .callout[data-kind="tip"] .callout-title,
+  #readerBody .callout[data-kind="success"] .callout-title,
+  #readerBody .callout[data-kind="example"] .callout-title { color: #56632e; }
+  #readerBody pre {
+    background: rgba(60, 46, 28, .9); color: #f0e2c4;
+    padding: 12px 16px; border-radius: 5px; overflow: auto;
+    font: 12.5px/1.7 Consolas, Monaco, monospace;
+  }
+  #readerBody code {
+    background: rgba(190, 165, 118, .22); color: #7a4a1e;
+    padding: 1px 5px; border-radius: 3px;
+    font: 12.5px Consolas, Monaco, monospace;
+  }
+  #readerBody pre code { background: none; color: inherit; padding: 0; }
+  #readerBody a { color: #a63c20; text-decoration: none; border-bottom: 1px dotted #b9714f; }
+  #readerBody a:hover { color: #d0522c; }
+  #readerBody .wiki {
+    color: #8a6320; text-decoration: none; cursor: pointer;
+    border-bottom: 1px dashed rgba(160, 118, 56, .7);
+  }
+  #readerBody .wiki:hover { color: #a63c20; border-bottom-color: #a63c20; }
+  #readerBody .wiki.missing { color: #9c865f; border-bottom-style: dotted; }
+  #readerBody .anchor-hit { background: rgba(226, 182, 82, .32); border-radius: 2px; }
+  #readerBody hr { border: 0; border-top: 1px solid rgba(176, 140, 78, .35); margin: 1.3em 0; }
+  #readerBody img { max-width: 100%; border-radius: 3px; }
+  #readerBody .empty { color: #9c865f; font-size: 13px; letter-spacing: .08em; }
+
+  #fxCanvas { position: fixed; inset: 0; z-index: 11; pointer-events: none; }
+
   @media (max-width: 560px) {
     .help { display: none; }
     #scroll3d { transform: scale(.68); transform-origin: top left; }
+    #readerHead { padding: 22px 20px 12px 96px; }
+    #readerTitle { font-size: 20px; }
+    #readerPath { display: none; }
+    #readerBody { padding: 16px 26px 32px; height: calc(100% - 70px); }
+    .ra-tl, .ra-br { width: 128px; }
+    .ra-tr, .ra-bl { width: 128px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #reader, #readerMask { transition-duration: .01s; }
   }
 </style>
 </head>
@@ -267,11 +456,91 @@
   <div class="help">
     点卷轴：毛笔点简 · 缓缓展卷｜点竹简：切换星域｜再点卷轴：收卷并还原星云全景<br>
     拖拽旋转 · 滚轮缩放 · 右键平移 · 拖拽星点：牵引星云变形<br>
-    点击星云 / 星点：仅看该星云 · 点击星点：点亮关联 · 星云内点空白：回到星云全貌 · 点击虚空：回到全景
+    点击星云 / 星点：仅看该星云 · 点击星点：点亮关联 · 星云内点空白：回到星云全貌 · 点击虚空：回到全景<br>
+    双击星点或名称：展卷读文 · 点遮罩 / × / Esc：合卷
   </div>
 
   <div id="tip" class="tip" hidden></div>
   <div id="alert" class="alert" hidden></div>
+
+  <div id="readerMask"></div>
+  <div id="reader" role="dialog" aria-modal="true" aria-labelledby="readerTitle">
+    <div class="paper-grain"></div>
+    <div class="paper-edge"></div>
+
+    <!-- 左上：朱砂红日 + 金色祥云 -->
+    <svg class="ra ra-tl" viewBox="0 0 250 152" aria-hidden="true">
+      <defs>
+        <radialGradient id="sunGrad" cx="40%" cy="36%">
+          <stop offset="0" stop-color="#d4472b"/>
+          <stop offset="1" stop-color="#a82a17"/>
+        </radialGradient>
+      </defs>
+      <circle cx="86" cy="48" r="37" fill="url(#sunGrad)"/>
+      <path fill="#e8ce97" fill-opacity=".6" stroke="#c39a45" stroke-width="2.1" stroke-linejoin="round"
+            d="M16 98 C4 86 14 66 31 70 C32 53 57 47 69 62 C80 47 104 54 105 73
+               C122 66 138 79 132 95 C152 90 171 94 188 88 C178 107 150 114 128 107
+               C104 115 76 114 55 107 C36 113 19 108 16 98 Z"/>
+      <g fill="none" stroke="#bd8f3b" stroke-width="1.8" stroke-linecap="round">
+        <path d="M31 88 c9 -9 22 -5 22 5 c0 8 -10 11 -14 5"/>
+        <path d="M70 82 c10 -10 23 -5 23 6 c0 8 -11 11 -15 4"/>
+        <path d="M110 88 c9 -8 21 -4 21 5 c0 8 -10 10 -14 4"/>
+        <path d="M150 72 h56 M158 81 h41 M170 90 h32"/>
+        <path d="M20 114 c42 12 94 11 142 1"/>
+      </g>
+    </svg>
+
+    <!-- 右上：金色回纹角花 -->
+    <svg class="ra ra-tr" viewBox="0 0 186 214" aria-hidden="true">
+      <g fill="none" stroke="#c39a45" stroke-width="2.6">
+        <path d="M186 8 H122 V22 H96 V8 H52"/>
+        <path d="M186 96 V116 H172 V136 H186 V214"/>
+        <path d="M116 30 H172 V86 H116 Z"/>
+        <path d="M128 42 H160 V74 H128 Z"/>
+        <path d="M140 54 H148 V62 H140 Z"/>
+        <path d="M116 30 L128 42 M172 30 L160 42 M116 86 L128 74 M172 86 L160 74"/>
+        <path d="M96 30 V48 H82"/>
+      </g>
+    </svg>
+
+    <!-- 左下：回纹角花（旋转 180° 复用右上图形） -->
+    <svg class="ra ra-bl" viewBox="0 0 186 214" aria-hidden="true">
+      <g transform="translate(186 214) scale(-1 -1)" fill="none" stroke="#c39a45" stroke-width="2.6">
+        <path d="M186 8 H122 V22 H96 V8 H52"/>
+        <path d="M186 96 V116 H172 V136 H186 V214"/>
+        <path d="M116 30 H172 V86 H116 Z"/>
+        <path d="M128 42 H160 V74 H128 Z"/>
+        <path d="M140 54 H148 V62 H140 Z"/>
+        <path d="M116 30 L128 42 M172 30 L160 42 M116 86 L128 74 M172 86 L160 74"/>
+        <path d="M96 30 V48 H82"/>
+      </g>
+    </svg>
+
+    <!-- 右下：金色如意云（镜像左上云形，不含红日） -->
+    <svg class="ra ra-br" viewBox="0 0 250 152" aria-hidden="true">
+      <g transform="translate(250 152) scale(-1 -1)">
+        <path fill="#e8ce97" fill-opacity=".6" stroke="#c39a45" stroke-width="2.1" stroke-linejoin="round"
+              d="M16 98 C4 86 14 66 31 70 C32 53 57 47 69 62 C80 47 104 54 105 73
+                 C122 66 138 79 132 95 C152 90 171 94 188 88 C178 107 150 114 128 107
+                 C104 115 76 114 55 107 C36 113 19 108 16 98 Z"/>
+        <g fill="none" stroke="#bd8f3b" stroke-width="1.8" stroke-linecap="round">
+          <path d="M31 88 c9 -9 22 -5 22 5 c0 8 -10 11 -14 5"/>
+          <path d="M70 82 c10 -10 23 -5 23 6 c0 8 -11 11 -15 4"/>
+          <path d="M110 88 c9 -8 21 -4 21 5 c0 8 -10 10 -14 4"/>
+          <path d="M150 72 h56 M158 81 h41 M170 90 h32"/>
+          <path d="M20 114 c42 12 94 11 142 1"/>
+        </g>
+      </g>
+    </svg>
+
+    <div id="readerHead">
+      <div id="readerTitle">展卷</div>
+      <div id="readerPath"></div>
+      <button id="readerClose" type="button" aria-label="合卷">×</button>
+    </div>
+    <div id="readerBody"></div>
+  </div>
+  <canvas id="fxCanvas" aria-hidden="true"></canvas>
 
   <script type="importmap">
   {
@@ -308,6 +577,129 @@
     return String(s).replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[c]);
+  }
+
+  /* 轻量 Markdown 渲染：够读笔记，不引入外部库 */
+  function safeUrl(u) {
+    const s = String(u).trim();
+    return /^(https?:|mailto:|#|\/|\.\/|\.\.\/)/i.test(s) ? s : '#';
+  }
+
+  function inlineMd(s) {
+    const codes = [];
+    let out = escapeHtml(s).replace(/`([^`]+)`/g, (_, c) => {
+      codes.push('<code>' + c + '</code>');
+      return '\u0001' + (codes.length - 1) + '\u0001';
+    });
+    out = out.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, u) =>
+      '<img alt="' + alt + '" src="' + escapeHtml(safeUrl(u)) + '">');
+    out = out.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, rawT, label) => {
+      const t = rawT.replace(/\\+$/, '').trim();   // 表格里常见的 \| 转义
+      return '<a class="wiki" href="#" data-wiki="' + t + '">' + (label || t) + '</a>';
+    });
+    out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, t, u) =>
+      '<a href="' + escapeHtml(safeUrl(u)) + '" target="_blank" rel="noopener">' + t + '</a>');
+    out = out.replace(/==([^=]+)==/g, '<mark class="hl">$1</mark>');
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+    return out.replace(/\u0001(\d+)\u0001/g, (_, i) => codes[Number(i)]);
+  }
+
+  const CALLOUT_LABEL = {
+    note: '笔记', tip: '提示', important: '重要', warning: '警告', caution: '注意',
+    danger: '危险', info: '信息', example: '示例', quote: '引述', todo: '待办',
+    success: '成功', question: '疑问', failure: '失败', bug: '缺陷',
+    abstract: '摘要', summary: '小结', tldr: '梗概'
+  };
+
+  function renderMarkdown(src) {
+    let text = String(src).replace(/\r\n?/g, '\n');
+    if (/^---\n/.test(text)) {
+      const end = text.indexOf('\n---', 4);
+      if (end >= 0) text = text.slice(end + 4);
+    }
+    const out = [];
+    let para = [], code = [], listType = null, inCode = false;
+    const flushPara = () => { if (para.length) { out.push('<p>' + inlineMd(para.join(' ')) + '</p>'); para = []; } };
+    const closeList = () => { if (listType) { out.push('</' + listType + '>'); listType = null; } };
+
+    const lines = text.split('\n');
+    for (let qi = 0; qi < lines.length; qi++) {
+      const line = lines[qi];
+      if (/^\s*```/.test(line)) {
+        if (inCode) { out.push('<pre><code>' + escapeHtml(code.join('\n')) + '</code></pre>'); code = []; inCode = false; }
+        else { flushPara(); closeList(); inCode = true; }
+        continue;
+      }
+      if (inCode) { code.push(line); continue; }
+      if (!line.trim()) { flushPara(); closeList(); continue; }
+
+      let m;
+      if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
+        flushPara(); closeList();
+        out.push('<h' + m[1].length + '>' + inlineMd(m[2]) + '</h' + m[1].length + '>');
+      } else if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+        flushPara(); closeList(); out.push('<hr>');
+      } else if ((m = /^\s*>\s?(.*)$/.exec(line))) {
+        flushPara(); closeList();
+        // 合并连续的 > 行，避免一行被拆成一个独立引用块
+        const ql = [m[1]];
+        while (qi + 1 < lines.length && /^\s*>/.test(lines[qi + 1])) {
+          qi++;
+          ql.push(/^\s*>\s?(.*)$/.exec(lines[qi])[1]);
+        }
+        const cm = /^\[!([^\]]+)\]([+-]?)\s*(.*)$/.exec(ql[0].trim());
+        if (cm) {
+          const kind = cm[1].toLowerCase();
+          ql.shift();
+          const title = cm[3].trim() || CALLOUT_LABEL[kind] || cm[1];
+          // 标注块内也支持 - 列表与段落混排（Obsidian 常见写法）
+          let inUl = false;
+          const body = ql.map((l) => {
+            const t = l.trim();
+            if (!t) { if (inUl) { inUl = false; return '</ul>'; } return ''; }
+            const li = /^[-*+]\s+(.*)$/.exec(t);
+            if (li) {
+              const open = inUl ? '' : '<ul>';
+              inUl = true;
+              return open + '<li>' + inlineMd(li[1]) + '</li>';
+            }
+            if (inUl) { inUl = false; return '</ul><p>' + inlineMd(t) + '</p>'; }
+            return '<p>' + inlineMd(t) + '</p>';
+          }).join('') + (inUl ? '</ul>' : '');
+          out.push('<div class="callout" data-kind="' + escapeHtml(kind) + '">' +
+            '<div class="callout-title">' + inlineMd(title) + '</div>' +
+            '<div class="callout-body">' + body + '</div></div>');
+        } else {
+          out.push('<blockquote>' + ql.filter((l) => l.trim())
+            .map((l) => inlineMd(l.trim())).join('<br>') + '</blockquote>');
+        }
+      } else if ((m = /^\s*[-*+]\s+(.*)$/.exec(line))) {
+        flushPara();
+        if (listType !== 'ul') { closeList(); out.push('<ul>'); listType = 'ul'; }
+        out.push('<li>' + inlineMd(m[1]) + '</li>');
+      } else if ((m = /^\s*\d+[.)]\s+(.*)$/.exec(line))) {
+        flushPara();
+        if (listType !== 'ol') { closeList(); out.push('<ol>'); listType = 'ol'; }
+        out.push('<li>' + inlineMd(m[1]) + '</li>');
+      } else {
+        para.push(line.trim());
+      }
+    }
+    if (inCode) out.push('<pre><code>' + escapeHtml(code.join('\n')) + '</code></pre>');
+    flushPara(); closeList();
+    return out.join('\n') || '<p class="empty">（此页尚无正文）</p>';
+  }
+
+  /* GitHub Pages 上可推断出仓库地址时，给出「在 GitHub 打开」的降级链接 */
+  function githubBlobUrl(nodeId) {
+    const h = location.hostname;
+    if (!/^[^.]+\.github\.io$/i.test(h)) return null;
+    const seg = location.pathname.split('/').filter(Boolean);
+    if (!seg.length) return null;
+    return 'https://github.com/' + encodeURIComponent(h.split('.')[0]) + '/' +
+      encodeURIComponent(seg[0]) + '/blob/main/' +
+      nodeId.split('/').map(encodeURIComponent).join('/');
   }
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1057,6 +1449,7 @@
         lit: false, flash: 0
       };
       pick.userData.node = nodeObj;
+      label.userData.node = nodeObj;   // 双击名称标签也能展卷
       nodeObjs.push(nodeObj);
       allNodes.push(nodeObj);
     }
@@ -1479,6 +1872,492 @@
       if (activeCluster) goHome();
       else clearWave();
     }
+  });
+
+  /* ============================================================
+     展卷读文：宣纸浮层 + 冲击波 / 星光粒子 / 流光拖尾 / 外缘光晕
+     独立 2D 画布，不参与主星云的 WebGL 渲染
+     ============================================================ */
+
+  function createReaderFx() {
+    const cv = $('fxCanvas');
+    const cx = cv.getContext('2d');
+    const TAU = Math.PI * 2;
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    let W = 0, H = 0, dpr = 1;
+    let rings = [], halos = [], sparks = [], shards = [];
+    let panel = null, state = 'idle', closeAt = 0, panelAt = 0, raf = 0;
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth; H = window.innerHeight;
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      cv.style.width = W + 'px'; cv.style.height = H + 'px';
+      cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // 改画布尺寸会清空像素；特效运行时同步补一帧，避免闪断或动画链停摆
+      if (state !== 'idle') {
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+        frame(performance.now());
+      }
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    function burst(x, y) {
+      for (let i = 0; i < 3; i++) {
+        rings.push({ x, y, age: -i * .14, life: 1.2, w: 7 - i * 1.8, max: Math.max(W, H) * .8 });
+      }
+      halos.push({ x, y, age: 0, life: 1.0 });
+      for (let i = 0; i < 128; i++) {
+        const a = rnd(0, TAU), sp = rnd(90, 520) * (i < 24 ? 1.3 : 1);
+        sparks.push({
+          x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+          age: 0, life: rnd(.9, 1.9), size: rnd(1.2, 3.2),
+          tail: [], gold: i % 3 === 0, long: i < 32
+        });
+      }
+      state = 'open'; start();
+    }
+
+    function setPanel(rect) {
+      const first = !panel;
+      panel = rect;
+      // 首次建立浮层矩形时开始淡入/呼吸计时；resize 重设矩形不打断呼吸节奏
+      if (first) panelAt = performance.now();
+      if (state === 'open') state = 'hold';
+      else if (state === 'idle') return;
+      start();
+    }
+
+    function dissolve() {
+      state = 'close'; closeAt = performance.now();
+      for (const s of sparks) { s.vx *= .3; s.vy *= .3; s.life = Math.min(s.life, s.age + .85); }
+      for (const r of rings) r.life = Math.min(r.life, r.age + .55);
+      // 合卷余烬：从浮层四边向外缓慢飘散，保证久读之后关闭仍有可见的消散过程
+      // 展卷未过 1.1s 就关闭时 panel 还没建立，直接取浮层实时矩形兜底
+      const rect = panel || readerEl.getBoundingClientRect();
+      if (rect) {
+        const mx = rect.left + rect.width / 2, my = rect.top + rect.height / 2;
+        for (let i = 0; i < 48; i++) {
+          const a = rnd(0, TAU), rr = rnd(.55, 1.05);
+          sparks.push({
+            x: mx + Math.cos(a) * rect.width * .5 * rr,
+            y: my + Math.sin(a) * rect.height * .5 * rr,
+            vx: Math.cos(a) * rnd(24, 78), vy: Math.sin(a) * rnd(24, 78) - 12,
+            age: 0, life: rnd(.9, 1.5), size: rnd(.9, 2.1),
+            tail: [], gold: true, long: false
+          });
+        }
+        // 合卷：浮层化作由大渐小的浅米/金色星光，缓缓飘散
+        if (!reduceMotion) {
+          const cols = 22, rows = 15;
+          const cw = rect.width / cols, ch = rect.height / rows;
+          for (let i = 0; i < cols; i++) {
+            for (let j = 0; j < rows; j++) {
+              if (Math.random() < .52) continue;
+              shards.push({
+                x: rect.left + (i + .5) * cw + rnd(-cw * .2, cw * .2),
+                y: rect.top + (j + .5) * ch + rnd(-ch * .2, ch * .2),
+                vx: (i - cols / 2) * rnd(1.2, 3.4) + rnd(-14, 14),
+                vy: (j - rows / 2) * rnd(.6, 2.2) + rnd(-8, 24),
+                age: 0, delay: rnd(0, .5), life: rnd(1.7, 2.6),
+                size: Math.min(cw, ch) * rnd(.2, .52),
+                gold: Math.random() < .28,
+                rot: rnd(-.3, .3), spin: rnd(-.55, .55), tw: rnd(0, TAU)
+              });
+            }
+          }
+        }
+      }
+      start();
+    }
+
+    // 返回上一篇：光晕与状态回到常驻态，碎片继续自然飘散完
+    function restore(rect) {
+      state = 'hold'; panel = rect; panelAt = performance.now() - 900;
+      start();
+    }
+
+    function frame(now) {
+      raf = 0;
+      const dt = 1 / 60;
+      cx.clearRect(0, 0, W, H);
+      let alive = state === 'hold' || state === 'close';
+
+      // 环形光晕：中心空、外圈金、缓慢扩张淡出
+      for (const h of halos) {
+        h.age += dt;
+        const k = clamp(h.age / h.life, 0, 1);
+        if (k >= 1) continue;
+        const r = 24 + k * 330;
+        const g = cx.createRadialGradient(h.x, h.y, r * .52, h.x, h.y, r);
+        g.addColorStop(0, 'rgba(255,236,186,0)');
+        g.addColorStop(.68, 'rgba(255,214,140,' + (.26 * (1 - k)) + ')');
+        g.addColorStop(1, 'rgba(255,214,140,0)');
+        cx.fillStyle = g;
+        cx.beginPath(); cx.arc(h.x, h.y, r, 0, TAU); cx.fill();
+        alive = true;
+      }
+
+      // 三道向外扩散的冲击波
+      cx.save();
+      cx.shadowColor = 'rgba(255,214,140,.75)';
+      cx.shadowBlur = 16;
+      for (const r of rings) {
+        r.age += dt;
+        if (r.age < 0) { alive = true; continue; }
+        const k = clamp(r.age / r.life, 0, 1);
+        if (k >= 1) continue;
+        const rad = 10 + (r.max - 10) * (1 - Math.pow(1 - k, 2));
+        cx.beginPath(); cx.arc(r.x, r.y, rad, 0, TAU);
+        cx.strokeStyle = 'rgba(255,' + Math.round(230 - 36 * k) + ',' + Math.round(176 - 56 * k) + ',' + (.6 * (1 - k)) + ')';
+        cx.lineWidth = r.w * (1 - k) + .5;
+        cx.stroke();
+        alive = true;
+      }
+      cx.restore();
+
+      // 星光粒子 + 流光拖尾
+      for (const s of sparks) {
+        s.age += dt;
+        if (s.age >= s.life) continue;
+        s.tail.push([s.x, s.y]);
+        const maxTail = s.long ? 18 : 7;
+        if (s.tail.length > maxTail) s.tail.shift();
+        s.x += s.vx * dt; s.y += s.vy * dt;
+        s.vx *= .977; s.vy *= .977; s.vy += 16 * dt;
+        const k = 1 - s.age / s.life;
+        for (let j = 1; j < s.tail.length; j++) {
+          const a = (j / s.tail.length) * k * (s.gold ? .72 : .42);
+          cx.strokeStyle = s.gold ? 'rgba(255,214,140,' + a + ')' : 'rgba(255,248,226,' + a + ')';
+          cx.lineWidth = s.size * (j / s.tail.length) * 1.05;
+          cx.beginPath();
+          cx.moveTo(s.tail[j - 1][0], s.tail[j - 1][1]);
+          cx.lineTo(s.tail[j][0], s.tail[j][1]);
+          cx.stroke();
+        }
+        cx.beginPath(); cx.arc(s.x, s.y, s.size * (.5 + k * .5), 0, TAU);
+        cx.fillStyle = s.gold ? 'rgba(255,220,150,' + (.9 * k) + ')' : 'rgba(255,252,238,' + (.95 * k) + ')';
+        cx.shadowColor = 'rgba(255,226,164,.9)'; cx.shadowBlur = 14;
+        cx.fill(); cx.shadowBlur = 0;
+        alive = true;
+      }
+
+      // 合卷星光：四芒星形，由大渐小，缓缓向外飘散并淡尽
+      for (const p of shards) {
+        p.age += dt;
+        if (p.age < p.delay || p.age >= p.life) continue;
+        const k = 1 - (p.age - p.delay) / (p.life - p.delay);
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        p.vx *= .991; p.vy = p.vy * .991 + 9 * dt;
+        const s = p.size * k;
+        if (s < .4) continue;
+        const a = Math.pow(k, 1.35) * (.74 + .26 * Math.sin(p.age * 7 + p.tw));
+        cx.save();
+        cx.translate(p.x, p.y);
+        cx.rotate(p.rot + p.age * p.spin);
+        // 外层柔光晕，星芒才不会显得干硬
+        cx.beginPath(); cx.arc(0, 0, s * .82, 0, TAU);
+        cx.fillStyle = p.gold
+          ? 'rgba(255,214,140,' + (a * .13) + ')'
+          : 'rgba(255,246,222,' + (a * .1) + ')';
+        cx.fill();
+        // 四长尖 + 四细腰的星芒（竖向略长，更像闪烁的星）
+        cx.beginPath();
+        for (let n = 0; n < 8; n++) {
+          const ang = n * Math.PI / 4;
+          const rr = n % 2 ? s * .15 : (n % 4 === 0 ? s : s * .68);
+          const px = Math.cos(ang) * rr, py = Math.sin(ang) * rr;
+          n ? cx.lineTo(px, py) : cx.moveTo(px, py);
+        }
+        cx.closePath();
+        cx.fillStyle = p.gold
+          ? 'rgba(255,222,158,' + (a * .88) + ')'
+          : 'rgba(246,236,216,' + (a * .74) + ')';
+        cx.fill();
+        // 星心亮核
+        cx.beginPath(); cx.arc(0, 0, Math.max(.55, s * .16), 0, TAU);
+        cx.fillStyle = p.gold
+          ? 'rgba(255,250,224,' + (a * .95) + ')'
+          : 'rgba(255,253,245,' + (a * .88) + ')';
+        cx.fill();
+        cx.restore();
+        alive = true;
+      }
+
+      // 打开后：沿浮层四边外缘的柔和金色光晕，缓慢明灭呼吸；关闭时外扩淡出
+      // 光晕单独画在 fxCanvas 上，不承载文字，浮层文字因此保持绝对静止
+      if (panel) {
+        const fade = state === 'close'
+          ? clamp(1 - (now - closeAt) / 1100, 0, 1)
+          : clamp((now - panelAt) / 900, 0, 1);
+        if (fade > 0) {
+          const breath = .72 + .28 * (.5 + .5 * Math.sin((now - panelAt) * TAU / 7000));
+          const a = fade * breath;
+          const push = state === 'close' ? (1 - fade) * 46 : 0;
+          const pad = 14 + push;
+          const l = panel.left - pad, t = panel.top - pad;
+          const w = panel.width + pad * 2, h = panel.height + pad * 2;
+          cx.save();
+          cx.lineJoin = 'round';
+          // 由外向内三层宽幅柔光，形成外扩的云雾状光晕
+          const layers = [[72, .028], [48, .045], [28, .065]];
+          for (const [lw, al] of layers) {
+            cx.strokeStyle = 'rgba(255,214,148,' + (a * al) + ')';
+            cx.lineWidth = lw;
+            cx.strokeRect(l, t, w, h);
+          }
+          // 外缘主光晕：靠阴影发光，描边本身压得很淡，避免出现硬线框
+          cx.shadowColor = 'rgba(255,216,152,' + (a * .9) + ')';
+          cx.shadowBlur = 52;
+          cx.strokeStyle = 'rgba(255,232,180,' + (a * .14) + ')';
+          cx.lineWidth = 1.2;
+          cx.strokeRect(l, t, w, h);
+          cx.strokeRect(l, t, w, h);
+          cx.restore();
+        }
+      }
+
+      rings = rings.filter((r) => r.age < r.life);
+      halos = halos.filter((h) => h.age < h.life);
+      sparks = sparks.filter((s) => s.age < s.life);
+      shards = shards.filter((p) => p.age < p.life);
+      if (state === 'open' && panel) state = 'hold';
+      if (state === 'close' && now - closeAt > 2700) {
+        state = 'idle'; panel = null; panelAt = 0; shards = [];
+        cx.clearRect(0, 0, W, H);
+        return;
+      }
+      if (alive) start();
+    }
+
+    function start() { if (!raf) raf = requestAnimationFrame(frame); }
+    return { burst, setPanel, dissolve, restore };
+  }
+
+  const fx = createReaderFx();
+  const readerEl = $('reader');
+  const readerMask = $('readerMask');
+  let readerOpen = false, openSeq = 0, closeTimer = 0, panelTimer = 0, wikiTipTimer = 0;
+  let readerStack = [], currentNote = null, closing = false;
+  const SHATTER_MS = 1600;   // 星光消散主体时长，之后返回上一篇或彻底合卷
+
+  // 视口变化后，外缘光晕要跟随浮层的新位置
+  window.addEventListener('resize', () => {
+    if (readerOpen) fx.setPanel(readerEl.getBoundingClientRect());
+  });
+
+  /* 把 Obsidian 双链解析成 graph 里的节点，顺带取出 #锚点 */
+  function resolveWiki(raw, fromId) {
+    let t = String(raw).replace(/\\/g, '/').trim();
+    let anchor = '';
+    const hi = t.indexOf('#');
+    if (hi >= 0) { anchor = t.slice(hi + 1).trim(); t = t.slice(0, hi).trim(); }
+    if (!t) return { node: null, anchor };
+    if (!/\.md$/i.test(t)) t += '.md';
+    const base = t.split('/').pop();
+    const vaultRoot = fromId.split('/')[0];
+    const curDir = fromId.slice(0, fromId.lastIndexOf('/') + 1);
+    const cands = [t, vaultRoot + '/' + t, curDir + t, curDir + base, vaultRoot + '/' + base];
+    for (const c of cands) {
+      const hit = allNodes.find((n) => n.id.toLowerCase() === c.toLowerCase());
+      if (hit) return { node: hit, anchor };
+    }
+    const stem = base.replace(/\.md$/i, '').toLowerCase();
+    const byName = allNodes.find((n) =>
+      n.name.toLowerCase() === stem ||
+      n.id.split('/').pop().replace(/\.md$/i, '').toLowerCase() === stem);
+    return { node: byName || null, anchor };
+  }
+
+  /* 锚点文字与渲染后标题未必逐字一致，做去标点后的宽松匹配 */
+  function scrollToAnchor(anchor) {
+    if (!anchor) return;
+    const norm = (s) => s.replace(/[\s：:、，,。.（）()§|\[\]#*—-]/g, '').toLowerCase();
+    const want = norm(anchor);
+    const body = $('readerBody');
+    if (!want) return;
+    for (const h of body.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
+      const k = norm(h.textContent);
+      if (k && (k === want || k.includes(want) || want.includes(k))) {
+        body.scrollTop = h.offsetTop - 12;
+        h.classList.add('anchor-hit');
+        return;
+      }
+    }
+  }
+
+  async function loadNote(node, anchor) {
+    const seq = ++openSeq;
+    $('readerBody').innerHTML = '<p class="empty">正在展卷…</p>';
+    $('readerBody').scrollTop = 0;
+    try {
+      const res = await fetch(encodeURI(node.id), { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      if (seq !== openSeq) return;
+      $('readerBody').innerHTML = renderMarkdown(text);
+      scrollToAnchor(anchor);
+    } catch (e) {
+      if (seq !== openSeq) return;
+      const gh = githubBlobUrl(node.id);
+      $('readerBody').innerHTML =
+        '<p class="empty">未能读取笔记正文（' + escapeHtml(e.message) + '）。</p>' +
+        '<p>路径：<code>' + escapeHtml(node.id) + '</code></p>' +
+        (gh ? '<p><a href="' + escapeHtml(gh) + '" target="_blank" rel="noopener">在 GitHub 打开此笔记 →</a></p>' : '') +
+        '<p class="empty">若部署于 GitHub Pages，请确认仓库根目录存在 <code>.nojekyll</code>，否则 .md 会被 Jekyll 转译而无法直读。</p>';
+    }
+  }
+
+  function showNote(node, anchor) {
+    currentNote = node;
+    readerEl.classList.remove('shattering');
+    readerEl.classList.add('on');
+    readerMask.classList.add('on');
+    readerOpen = true;
+    $('readerTitle').textContent = node.name;
+    $('readerPath').textContent = node.id;
+    $('readerPath').style.color = '';
+    fx.restore(readerEl.getBoundingClientRect());
+    loadNote(node, anchor || '');
+  }
+
+  function openReader(node, ev) {
+    clearWave();
+    clearTimeout(closeTimer);
+    clearTimeout(panelTimer);
+    tip.hidden = true;
+    if (drag) { drag = null; controls.enabled = true; }
+    controls.autoRotate = false;
+
+    readerStack = [];
+    closing = false;
+    readerEl.classList.remove('shattering');
+    readerEl.classList.add('on');
+    readerMask.classList.add('on');
+    readerOpen = true;
+    currentNote = node;
+    $('readerTitle').textContent = node.name;
+    $('readerPath').textContent = node.id;
+    $('readerPath').style.color = '';
+    if (!reduceMotion) fx.burst(ev.clientX, ev.clientY);
+    panelTimer = setTimeout(
+      () => fx.setPanel(readerEl.getBoundingClientRect()),
+      reduceMotion ? 0 : 1100
+    );
+    loadNote(node, '');
+  }
+
+  function closeReader() {
+    if (!readerOpen || closing) return;
+    closing = true;
+    readerOpen = false;
+    openSeq++;
+    clearTimeout(panelTimer);
+    clearTimeout(closeTimer);
+    clearTimeout(wikiTipTimer);
+    tip.hidden = true;
+    fx.dissolve();
+    readerEl.classList.add('shattering');
+    closeTimer = setTimeout(() => {
+      if (readerStack.length) {
+        showNote(readerStack.pop());
+      } else {
+        readerMask.classList.remove('on');
+        readerEl.classList.remove('on', 'shattering');
+        readerEl.style.left = readerEl.style.top = readerEl.style.width = readerEl.style.height = '';
+        $('readerBody').innerHTML = '';
+        currentNote = null;
+        controls.autoRotate = !reduceMotion && !activeCluster;
+      }
+      closing = false;
+    }, reduceMotion ? 0 : SHATTER_MS);
+  }
+
+  /* 浮层内点击双链：切换正文，并把当前笔记压入历史 */
+  $('readerBody').addEventListener('click', (ev) => {
+    const a = ev.target.closest('a.wiki');
+    if (!a || !currentNote || closing) return;
+    ev.preventDefault();
+    const raw = a.dataset.wiki || '';
+    const r = resolveWiki(raw, currentNote.id);
+    if (!r.node) {
+      a.classList.add('missing');
+      a.title = '未找到对应笔记：' + raw;
+      const pathEl = $('readerPath');
+      pathEl.textContent = '未找到对应笔记：' + raw;
+      pathEl.style.color = '#b9381f';
+      clearTimeout(wikiTipTimer);
+      wikiTipTimer = setTimeout(() => {
+        pathEl.textContent = currentNote ? currentNote.id : '';
+        pathEl.style.color = '';
+      }, 2200);
+      return;
+    }
+    readerStack.push(currentNote);
+    showNote(r.node, r.anchor);
+  });
+
+  /* 四边 / 四角拖拽调整浮层大小，光晕实时跟随 */
+  function initReaderResize() {
+    const dirs = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+    for (const d of dirs) {
+      const h = document.createElement('div');
+      h.className = 'rs rs-' + d;
+      h.dataset.rs = d;
+      readerEl.appendChild(h);
+    }
+    let rs = null;
+    readerEl.addEventListener('pointerdown', (ev) => {
+      const h = ev.target.closest('.rs');
+      if (!h || !readerOpen || closing) return;
+      rs = { d: h.dataset.rs, x: ev.clientX, y: ev.clientY, r: readerEl.getBoundingClientRect() };
+      try { if (readerEl.setPointerCapture) readerEl.setPointerCapture(ev.pointerId); } catch (_) {}
+      ev.preventDefault(); ev.stopPropagation();
+    });
+    readerEl.addEventListener('pointermove', (ev) => {
+      if (!rs) return;
+      const dx = ev.clientX - rs.x, dy = ev.clientY - rs.y;
+      const maxW = window.innerWidth - 32, maxH = window.innerHeight - 32;
+      let l = rs.r.left, t = rs.r.top, w = rs.r.width, hgt = rs.r.height;
+      const d = rs.d;
+      if (d.includes('e')) w = clamp(rs.r.width + dx, 460, maxW);
+      if (d.includes('w')) { w = clamp(rs.r.width - dx, 460, maxW); l = rs.r.left + rs.r.width - w; }
+      if (d.includes('s')) hgt = clamp(rs.r.height + dy, 320, maxH);
+      if (d.includes('n')) { hgt = clamp(rs.r.height - dy, 320, maxH); t = rs.r.top + rs.r.height - hgt; }
+      readerEl.style.left = (l + w / 2) + 'px';
+      readerEl.style.top = (t + hgt / 2) + 'px';
+      readerEl.style.width = w + 'px';
+      readerEl.style.height = hgt + 'px';
+      fx.setPanel(readerEl.getBoundingClientRect());
+      ev.preventDefault();
+    });
+    const end = () => { rs = null; };
+    readerEl.addEventListener('pointerup', end);
+    readerEl.addEventListener('pointercancel', end);
+  }
+  initReaderResize();
+
+  function pickForOpen(ev) {
+    updatePointer(ev);
+    raycaster.setFromCamera(pointer, camera);
+    const targets = [];
+    for (const n of allNodes) {
+      if (n.cluster.visT > 0.5) targets.push(n.pick, n.label);
+    }
+    const hits = raycaster.intersectObjects(targets, false);
+    return hits.length ? (hits[0].object.userData.node || null) : null;
+  }
+
+  renderer.domElement.addEventListener('dblclick', (ev) => {
+    const node = pickForOpen(ev);
+    if (node) openReader(node, ev);
+  });
+  $('readerClose').addEventListener('click', closeReader);
+  readerMask.addEventListener('click', closeReader);
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && readerOpen) closeReader();
   });
 
   /* ============================================================
